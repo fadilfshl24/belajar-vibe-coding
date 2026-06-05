@@ -7,6 +7,9 @@ export interface PaginationMeta {
   previousPage: boolean;
   nextPageURL: string;
   previousPageURL: string;
+  filterColumn: string;
+  searchTerm: string;
+  orderBy: string;
 }
 
 export interface ResponseMeta {
