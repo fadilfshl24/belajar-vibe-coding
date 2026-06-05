@@ -1,7 +1,8 @@
 import { Elysia } from "elysia";
+import { apiRoutes } from "./routes/apiRoutes";
 
 const app = new Elysia()
-  .get("/", () => ({ message: "Hello World!" }))
+  .use(apiRoutes)
   .get("/health", () => ({ status: "ok" }))
   .listen(3000);
 
