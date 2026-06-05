@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { Context } from "elysia";
 import { failedResponse, successResponse, type PaginationMeta } from "../utils/response";
-import { validateRegisterInput } from "../validations/userValidation";
+import { parseRegisterInput } from "../validations/userValidation";
 import { UserModel } from "../models/UserModel";
 import { toUserDTO } from "../dto/UserDTO";
 
@@ -19,21 +19,19 @@ export class UserController {
       crypto.randomUUID();
 
     try {
-      const validation = validateRegisterInput(ctx.body);
-      if (!validation.valid) {
+      // Zod safeParse — validates and coerces (e.g. trims name)
+      const parsed = parseRegisterInput(ctx.body);
+      if (!parsed.success) {
+        const firstError = parsed.error.issues[0];
         return failedResponse(
           correlationId,
           "Create data failed!",
           400,
-          validation.error ?? "Input data not found or invalid!"
+          firstError?.message ?? "Input data not found or invalid!"
         );
       }
 
-      const { name, email, password } = ctx.body as {
-        name: string;
-        email: string;
-        password: string;
-      };
+      const { name, email, password } = parsed.data;
 
       const existingUser = await UserModel.findByEmail(email.toLowerCase().trim());
       if (existingUser) {
@@ -117,12 +115,7 @@ export class UserController {
         orderBy,
       };
 
-      return successResponse(
-        correlationId,
-        "Data found!",
-        { records },
-        pagination
-      );
+      return successResponse(correlationId, "Data found!", { records }, pagination);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return failedResponse(correlationId, "Internal server error", 500, message);
@@ -141,12 +134,7 @@ export class UserController {
       const id = (ctx.params as Record<string, string | undefined>).id ?? "";
 
       if (!UUID_REGEX.test(id)) {
-        return failedResponse(
-          correlationId,
-          "Data not found!",
-          400,
-          "Invalid UUID format"
-        );
+        return failedResponse(correlationId, "Data not found!", 400, "Invalid UUID format");
       }
 
       const user = await UserModel.findById(id);

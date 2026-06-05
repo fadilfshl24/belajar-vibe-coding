@@ -22,6 +22,7 @@
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
     "jsonwebtoken": "^9.0.3",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
   }
 }

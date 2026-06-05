@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Save Knowledge Now",
+  "description": "Manually trigger knowledge capture. Use this when you want to explicitly save a learning or bug fix from the current session to the appropriate technology-specific steering file.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The user wants to save a knowledge entry from this session.\n\n1. Review the current conversation and identify the most recent or most significant learning, bug fix, gotcha, or discovery.\n2. Ask the user to confirm or clarify what they want to capture if it's not obvious.\n3. Identify the technology context and version (e.g. .NET 10, Next.js 15, PostgreSQL 16, EF Core 10, etc.)\n4. Determine the steering file name: use kebab-case format `{technology}-{version}-knowledge.md` (e.g. `dotnet-10-knowledge.md`, `nextjs-15-knowledge.md`). If version is unknown, omit it.\n5. Check if `.kiro/steering/{filename}` already exists:\n   - If it exists: append the new knowledge entry\n   - If it does not exist: create the file with the standard header\n6. Write the entry using this format:\n\n```\n## [{date}] {Short Title}\n\n**Type:** Bug Fix | Learning | Gotcha | Best Practice\n**Context:** {brief description of what was being worked on}\n\n**Problem:**\n{what went wrong or what was discovered}\n\n**Solution / Lesson:**\n{what the fix or learning was}\n\n**Avoid:**\n{what to never do again, if applicable}\n```\n\n7. Confirm to the user what was saved and where."
+  }
+}

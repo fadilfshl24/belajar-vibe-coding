@@ -1,48 +1,69 @@
-export interface LoginInput {
-  email: string;
-  password: string;
-}
+import { z } from "zod";
 
-export interface RefreshTokenInput {
-  refreshToken: string;
-}
+// ---------------------------------------------------------------------------
+// Schemas
+// Zod v4: use `error` instead of `required_error`/`invalid_type_error`
+// ---------------------------------------------------------------------------
+
+export const LoginSchema = z.object({
+  email: z
+    .string({ error: "Field 'email' is required" })
+    .email("Field 'email' must be a valid email address"),
+
+  // No max-length check intentionally — let bcrypt.compare handle wrong passwords
+  password: z
+    .string({ error: "Field 'password' is required" })
+    .min(1, "Field 'password' is required"),
+});
+
+export const RefreshTokenSchema = z.object({
+  refreshToken: z
+    .string({ error: "Field 'refreshToken' is required" })
+    .trim()
+    .min(1, "Field 'refreshToken' is required"),
+});
+
+// ---------------------------------------------------------------------------
+// Inferred types
+// ---------------------------------------------------------------------------
+
+export type LoginInput = z.infer<typeof LoginSchema>;
+export type RefreshTokenInput = z.infer<typeof RefreshTokenSchema>;
+
+// ---------------------------------------------------------------------------
+// Validator helpers
+// ---------------------------------------------------------------------------
 
 export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export function validateLoginInput(body: unknown): ValidationResult {
-  if (!body || typeof body !== "object") {
-    return { valid: false, error: "Input data not found or invalid!" };
+  const result = LoginSchema.safeParse(body);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    return { valid: false, error: first?.message ?? "Input data not found or invalid!" };
   }
-
-  const { email, password } = body as Record<string, unknown>;
-
-  if (!email || typeof email !== "string" || !EMAIL_REGEX.test(email)) {
-    return { valid: false, error: "Field 'email' must be a valid email address" };
-  }
-
-  // Intentionally no max-length check on password — let bcrypt.compare handle wrong passwords
-  if (!password || typeof password !== "string" || password.length < 1) {
-    return { valid: false, error: "Field 'password' is required" };
-  }
-
   return { valid: true };
 }
 
 export function validateRefreshTokenInput(body: unknown): ValidationResult {
-  if (!body || typeof body !== "object") {
-    return { valid: false, error: "Input data not found or invalid!" };
+  const result = RefreshTokenSchema.safeParse(body);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    return { valid: false, error: first?.message ?? "Input data not found or invalid!" };
   }
-
-  const { refreshToken } = body as Record<string, unknown>;
-
-  if (!refreshToken || typeof refreshToken !== "string" || refreshToken.trim().length === 0) {
-    return { valid: false, error: "Field 'refreshToken' is required" };
-  }
-
   return { valid: true };
+}
+
+/**
+ * Parse and return typed data directly.
+ */
+export function parseLoginInput(body: unknown) {
+  return LoginSchema.safeParse(body);
+}
+
+export function parseRefreshTokenInput(body: unknown) {
+  return RefreshTokenSchema.safeParse(body);
 }

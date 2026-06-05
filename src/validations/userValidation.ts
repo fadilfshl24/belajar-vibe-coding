@@ -1,44 +1,57 @@
-export interface RegisterInput {
-  name: string;
-  email: string;
-  password: string;
-}
+import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Schemas
+// Zod v4: use `error` instead of `required_error`/`invalid_type_error`
+// ---------------------------------------------------------------------------
+
+export const RegisterSchema = z.object({
+  name: z
+    .string({ error: "Field 'name' is required" })
+    .trim()
+    .min(1, "Field 'name' is required")
+    .max(255, "Field 'name' must not exceed 255 characters"),
+
+  email: z
+    .string({ error: "Field 'email' is required" })
+    .email("Field 'email' must be a valid email address")
+    .max(255, "Field 'email' must not exceed 255 characters"),
+
+  password: z
+    .string({ error: "Field 'password' is required" })
+    .min(8, "Field 'password' must be at least 8 characters")
+    // bcrypt processes at most 72 bytes
+    .max(72, "Field 'password' must not exceed 72 characters"),
+});
+
+// ---------------------------------------------------------------------------
+// Inferred types
+// ---------------------------------------------------------------------------
+
+export type RegisterInput = z.infer<typeof RegisterSchema>;
+
+// ---------------------------------------------------------------------------
+// Validator helpers
+// ---------------------------------------------------------------------------
 
 export interface ValidationResult {
   valid: boolean;
   error?: string;
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export function validateRegisterInput(body: unknown): ValidationResult {
-  if (!body || typeof body !== "object") {
-    return { valid: false, error: "Input data not found or invalid!" };
+  const result = RegisterSchema.safeParse(body);
+  if (!result.success) {
+    const first = result.error.issues[0];
+    return { valid: false, error: first?.message ?? "Input data not found or invalid!" };
   }
-
-  const { name, email, password } = body as Record<string, unknown>;
-
-  if (!name || typeof name !== "string" || name.trim().length === 0) {
-    return { valid: false, error: "Field 'name' is required" };
-  }
-  if (name.trim().length > 255) {
-    return { valid: false, error: "Field 'name' must not exceed 255 characters" };
-  }
-
-  if (!email || typeof email !== "string" || !EMAIL_REGEX.test(email)) {
-    return { valid: false, error: "Field 'email' must be a valid email address" };
-  }
-  if (email.length > 255) {
-    return { valid: false, error: "Field 'email' must not exceed 255 characters" };
-  }
-
-  if (!password || typeof password !== "string" || password.length < 8) {
-    return { valid: false, error: "Field 'password' must be at least 8 characters" };
-  }
-  // bcrypt processes at most 72 bytes
-  if (password.length > 72) {
-    return { valid: false, error: "Field 'password' must not exceed 72 characters" };
-  }
-
   return { valid: true };
+}
+
+/**
+ * Parse and return typed data directly.
+ * Use when you want the validated + coerced value instead of just valid/error.
+ */
+export function parseRegisterInput(body: unknown) {
+  return RegisterSchema.safeParse(body);
 }

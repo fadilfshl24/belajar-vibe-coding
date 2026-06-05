@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Capture Knowledge to Steering",
+  "description": "After each agent session, automatically detect any learnings or bug fixes from the conversation and append them to the appropriate technology-specific steering file in .kiro/steering/. File is named by technology and version (e.g. dotnet-10-knowledge.md, nextjs-15-knowledge.md).",
+  "version": "1",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Review the conversation that just ended. Detect if there were any learnings, bug fixes, gotchas, or important discoveries made during this session.\n\nIf yes, do the following:\n1. Identify the technology context and version (e.g. .NET 10, Next.js 15, PostgreSQL 16, EF Core 10, etc.)\n2. Determine the steering file name: use kebab-case format `{technology}-{version}-knowledge.md` (e.g. `dotnet-10-knowledge.md`, `nextjs-15-knowledge.md`, `postgresql-16-knowledge.md`). If version is unknown, omit it (e.g. `react-knowledge.md`).\n3. Check if `.kiro/steering/{filename}` already exists:\n   - If it exists: append the new knowledge entry to the file\n   - If it does not exist: create the file with the standard header\n4. Each knowledge entry must follow this format:\n\n```\n## [{date}] {Short Title}\n\n**Type:** Bug Fix | Learning | Gotcha | Best Practice\n**Context:** {brief description of what was being worked on}\n\n**Problem:**\n{what went wrong or what was discovered}\n\n**Solution / Lesson:**\n{what the fix or learning was}\n\n**Avoid:**\n{what to never do again, if applicable}\n```\n\nIf there are no meaningful learnings or bug fixes in this session, do nothing and stay silent."
+  }
+}
