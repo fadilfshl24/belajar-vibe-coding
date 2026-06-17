@@ -4,6 +4,7 @@ import { failedResponse, successResponse, type PaginationMeta } from "../utils/r
 import { parseRegisterInput } from "../validations/userValidation";
 import { UserModel } from "../models/UserModel";
 import { toUserDTO } from "../dto/UserDTO";
+import { logActivity } from "../utils/activityLogger";
 
 const BCRYPT_SALT_ROUNDS = 10;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,7 +45,18 @@ export class UserController {
       }
 
       const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-      await UserModel.createUser({ name, email, password: hashedPassword });
+      const newUser = await UserModel.createUser({ name, email, password: hashedPassword });
+
+      // Log activity
+      const userAgent = ctx.headers["user-agent"];
+      const ipAddress = (ctx.headers["x-forwarded-for"] as string | undefined) ?? (ctx.headers["x-real-ip"] as string | undefined) ?? "";
+      await logActivity({
+        userId: newUser.id,
+        action: "REGISTER",
+        description: `User ${newUser.name} berhasil mendaftar ke sistem`,
+        ipAddress,
+        userAgent,
+      });
 
       return successResponse(correlationId, "Data has been created", null);
     } catch (err: unknown) {

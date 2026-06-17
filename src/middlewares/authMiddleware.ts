@@ -1,12 +1,11 @@
 import { Elysia } from "elysia";
-import jwt from "jsonwebtoken";
 import { failedResponse } from "../utils/response";
-import type { JwtPayload } from "../types/JwtPayload";
+import { SessionModel } from "../models/SessionModel";
 
 /**
- * Elysia scoped middleware that validates the Bearer access token.
- * On success, attaches `user: JwtPayload` to context via derive.
- * On failure, returns a 401 failedResponse immediately.
+ * Elysia scoped middleware that validates the Bearer session token.
+ * On success, attaches `user: JwtPayload`, `sessionId: string`, and `correlationId: string` to context via derive.
+ * On failure, returns a 401 response immediately.
  *
  * Usage: mount with .use(authMiddleware) before protected routes.
  * The `{ as: "scoped" }` option prevents the derive from leaking to
@@ -14,34 +13,59 @@ import type { JwtPayload } from "../types/JwtPayload";
  */
 export const authMiddleware = new Elysia({ name: "authMiddleware" }).derive(
   { as: "scoped" },
-  ({ headers }) => {
+  async ({ headers, set }) => {
     const correlationId =
       (headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     const authorization = headers["authorization"];
 
     if (!authorization || !authorization.startsWith("Bearer ")) {
-      // Throwing inside derive causes Elysia to respond with an error —
-      // we wrap it in a way the onError handler can intercept, but since
-      // we want a standard response shape we return early via a thrown object.
-      throw failedResponse(correlationId, "Token invalid.", 401);
+      set.status = 401;
+      throw new Response(
+        JSON.stringify(failedResponse(correlationId, "Token invalid.", 401)),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     const token = authorization.split(" ")[1];
 
     if (!token) {
-      throw failedResponse(correlationId, "Token invalid.", 401);
+      set.status = 401;
+      throw new Response(
+        JSON.stringify(failedResponse(correlationId, "Token invalid.", 401)),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     try {
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET!
-      ) as JwtPayload;
+      const session = await SessionModel.validateSession(token);
+      if (!session) {
+        set.status = 401;
+        throw new Response(
+          JSON.stringify(failedResponse(correlationId, "Token invalid.", 401)),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
 
-      return { user: decoded, correlationId };
-    } catch {
-      throw failedResponse(correlationId, "Token invalid.", 401);
+      return {
+        user: {
+          sub: session.userId,
+          email: session.user.email,
+        },
+        sessionId: session.id,
+        correlationId,
+      };
+    } catch (err: any) {
+      set.status = 401;
+      if (err instanceof Response) {
+        throw err;
+      }
+      throw new Response(
+        JSON.stringify(failedResponse(correlationId, "Token invalid.", 401)),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
     }
   }
 );
+
+
