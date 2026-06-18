@@ -7,18 +7,29 @@
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed": "bun run src/core/db/seeds/seed.ts",
+    "test:flow:auth": "bun run src/flow-testing-feature/test-flow.ts",
+    "test:flow:warehouse": "bun run src/flow-testing-feature/test-flow-warehouse.ts",
+    "test:flow:category": "bun run src/flow-testing-feature/test-flow-category.ts",
+    "test:flow:uom": "bun run src/flow-testing-feature/test-flow-uom.ts",
+    "test:flow:item": "bun run src/flow-testing-feature/test-flow-item.ts",
+    "test:flow:master-data": "bun run src/flow-testing-feature/test-flow-master-data.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/jsonwebtoken": "^9.0.10",
     "drizzle-kit": "^0.31.10"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
-    "postgres": "^3.4.9"
+    "jsonwebtoken": "^9.0.3",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
   }
 }

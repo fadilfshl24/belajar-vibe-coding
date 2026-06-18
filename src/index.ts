@@ -1,10 +1,12 @@
-import { Elysia } from "elysia";
+import { app } from "./app";
 
-const app = new Elysia()
-  .get("/", () => ({ message: "Hello World!" }))
-  .get("/health", () => ({ status: "ok" }))
-  .listen(3000);
+/**
+ * Entry Point
+ *
+ * Hanya bertugas menjalankan server. Semua konfigurasi ada di app.ts.
+ */
+app.listen(process.env.PORT ? parseInt(process.env.PORT) : 3000);
 
 console.log(
-  `🦊 Server running at http://${app.server?.hostname}:${app.server?.port}`
+  `🦊 WMS Server running at http://${app.server?.hostname}:${app.server?.port}`
 );
