@@ -1,10 +1,9 @@
-import { UserModel } from "../models/UserModel";
-import { SessionModel } from "../models/SessionModel";
-import { OauthModel } from "../models/OauthModel";
-import { db } from "../db/index";
-import { userSessions, userOauthAccounts } from "../db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { db } from "../core/db";
+import { userOauthAccounts, userSessions } from "../modules/auth/auth.schema";
+import { UserModel } from "../modules/user";
+import { OauthModel } from "../modules/auth/auth.model";
 
 async function cleanupUser(userId: string) {
   await db.delete(userSessions).where(eq(userSessions.userId, userId));
