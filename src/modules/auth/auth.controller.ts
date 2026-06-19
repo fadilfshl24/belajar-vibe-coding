@@ -392,7 +392,8 @@ export class AuthController {
       }> = {};
 
       for (const p of permissionsList) {
-        if (!mergedPermissions[p.menuCode]) {
+        const existing = mergedPermissions[p.menuCode];
+        if (!existing) {
           mergedPermissions[p.menuCode] = {
             menuCode: p.menuCode,
             canView: p.canView,
@@ -401,10 +402,10 @@ export class AuthController {
             canDelete: p.canDelete,
           };
         } else {
-          mergedPermissions[p.menuCode].canView = mergedPermissions[p.menuCode].canView || p.canView;
-          mergedPermissions[p.menuCode].canCreate = mergedPermissions[p.menuCode].canCreate || p.canCreate;
-          mergedPermissions[p.menuCode].canUpdate = mergedPermissions[p.menuCode].canUpdate || p.canUpdate;
-          mergedPermissions[p.menuCode].canDelete = mergedPermissions[p.menuCode].canDelete || p.canDelete;
+          existing.canView = existing.canView || p.canView;
+          existing.canCreate = existing.canCreate || p.canCreate;
+          existing.canUpdate = existing.canUpdate || p.canUpdate;
+          existing.canDelete = existing.canDelete || p.canDelete;
         }
       }
 
