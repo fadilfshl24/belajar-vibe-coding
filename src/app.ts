@@ -18,6 +18,19 @@ import { itemRoutes } from "./modules/item";
  * dan panggil .use() — tidak perlu menyentuh file lain.
  */
 export const app = new Elysia()
+  .onRequest(({ request, set }) => {
+    set.headers["Access-Control-Allow-Origin"] = "http://localhost:5173";
+    set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+    set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    set.headers["Access-Control-Allow-Credentials"] = "true";
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: set.headers as Record<string, string>,
+      });
+    }
+  })
   .use(authRoutes)
   .use(userRoutes)
   .use(roleRoutes)

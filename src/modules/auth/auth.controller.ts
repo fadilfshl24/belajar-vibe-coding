@@ -6,6 +6,11 @@ import { SessionModel, OauthModel } from "./auth.model";
 import { logActivity } from "../../core/utils/activityLogger";
 import type { JwtPayload } from "../../core/types/JwtPayload";
 import { UserModel } from "../user";
+import { eq, and, isNull, asc, inArray } from "drizzle-orm";
+import { db } from "../../core/db";
+import { roles, userWarehouseRoles } from "../role/role.schema";
+import { menus } from "../menu/menu.schema";
+import { roleMenuPermissions } from "../permission/permission.schema";
 
 export class AuthController {
   // ---------------------------------------------------------------------------
@@ -30,7 +35,7 @@ export class AuthController {
 
       const user = await UserModel.findByEmail(email.toLowerCase().trim());
       if (!user) {
-        return failedResponse(correlationId, "Data not found!", 400, "Email or password is incorrect");
+        return failedResponse(correlationId, "Data not found!", 400, "Your account is not found");
       }
 
       if (user.status !== 1) {
@@ -42,7 +47,7 @@ export class AuthController {
         ? await bcrypt.compare(password, user.password)
         : false;
       if (!passwordMatch) {
-        return failedResponse(correlationId, "Data not found!", 400, "Email or password is incorrect");
+        return failedResponse(correlationId, "Data not found!", 400, "Password is incorrect");
       }
 
       const userAgent = ctx.headers["user-agent"];
@@ -71,6 +76,8 @@ export class AuthController {
         },
       });
     } catch (err: unknown) {
+      console.log(err);
+
       const message = err instanceof Error ? err.message : "Unknown error";
       return failedResponse(correlationId, "Internal server error", 500, message);
     }
@@ -300,6 +307,195 @@ export class AuthController {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return failedResponse(correlationId, "Internal server error during OAuth callback", 500, message);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/auth/me (protected)
+  // ---------------------------------------------------------------------------
+  static async getMe(
+    ctx: Context & { user?: JwtPayload; correlationId?: string }
+  ) {
+    const correlationId =
+      ctx.correlationId ??
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
+
+    if (!ctx.user) {
+      return failedResponse(correlationId, "Unauthorized", 401, "User session not found");
+    }
+
+    try {
+      const userId = ctx.user.sub;
+
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return failedResponse(correlationId, "User not found", 404);
+      }
+
+      if (user.status !== 1) {
+        return failedResponse(correlationId, "User account is inactive", 400);
+      }
+
+      // Fetch user roles
+      const userRoles = await db
+        .select({
+          roleId: userWarehouseRoles.roleId,
+          warehouseId: userWarehouseRoles.warehouseId,
+          roleName: roles.name,
+        })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, userId),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const roleIds = userRoles.map((ur) => ur.roleId);
+
+      let permissionsList: any[] = [];
+      if (roleIds.length > 0) {
+        permissionsList = await db
+          .select({
+            menuId: roleMenuPermissions.menuId,
+            menuCode: menus.code,
+            menuName: menus.name,
+            menuPath: menus.path,
+            menuParentId: menus.parentId,
+            menuSortOrder: menus.sortOrder,
+            canView: roleMenuPermissions.canView,
+            canCreate: roleMenuPermissions.canCreate,
+            canUpdate: roleMenuPermissions.canUpdate,
+            canDelete: roleMenuPermissions.canDelete,
+          })
+          .from(roleMenuPermissions)
+          .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
+          .where(
+            and(
+              inArray(roleMenuPermissions.roleId, roleIds),
+              isNull(roleMenuPermissions.deletedAt),
+              isNull(menus.deletedAt)
+            )
+          );
+      }
+
+      // Merge permissions from multiple roles
+      const mergedPermissions: Record<string, {
+        menuCode: string;
+        canView: boolean;
+        canCreate: boolean;
+        canUpdate: boolean;
+        canDelete: boolean;
+      }> = {};
+
+      for (const p of permissionsList) {
+        if (!mergedPermissions[p.menuCode]) {
+          mergedPermissions[p.menuCode] = {
+            menuCode: p.menuCode,
+            canView: p.canView,
+            canCreate: p.canCreate,
+            canUpdate: p.canUpdate,
+            canDelete: p.canDelete,
+          };
+        } else {
+          mergedPermissions[p.menuCode].canView = mergedPermissions[p.menuCode].canView || p.canView;
+          mergedPermissions[p.menuCode].canCreate = mergedPermissions[p.menuCode].canCreate || p.canCreate;
+          mergedPermissions[p.menuCode].canUpdate = mergedPermissions[p.menuCode].canUpdate || p.canUpdate;
+          mergedPermissions[p.menuCode].canDelete = mergedPermissions[p.menuCode].canDelete || p.canDelete;
+        }
+      }
+
+      // Fetch all menus to build the full tree
+      const allMenus = await db
+        .select()
+        .from(menus)
+        .where(isNull(menus.deletedAt))
+        .orderBy(asc(menus.sortOrder));
+
+      interface MenuItem {
+        id: string;
+        parentId: string | null;
+        name: string;
+        code: string;
+        path: string;
+        sortOrder: number;
+        children: MenuItem[];
+      }
+
+      const menuMap = new Map<string, MenuItem>();
+      const allMenuItems: MenuItem[] = allMenus.map((m) => ({
+        id: m.id,
+        parentId: m.parentId,
+        name: m.name,
+        code: m.code,
+        path: m.path,
+        sortOrder: m.sortOrder,
+        children: [],
+      }));
+
+      allMenuItems.forEach((item) => menuMap.set(item.id, item));
+
+      // Find viewable menus
+      const viewableIds = new Set<string>();
+
+      // Step 1: Mark leaf nodes that the user can view
+      for (const item of allMenuItems) {
+        if (mergedPermissions[item.code]?.canView) {
+          viewableIds.add(item.id);
+        }
+      }
+
+      // Step 2: Bubble up viewable status to parent menus
+      let addedAny = true;
+      while (addedAny) {
+        addedAny = false;
+        for (const item of allMenuItems) {
+          if (viewableIds.has(item.id) && item.parentId && !viewableIds.has(item.parentId)) {
+            viewableIds.add(item.parentId);
+            addedAny = true;
+          }
+        }
+      }
+
+      // Step 3: Build the tree with only viewable items
+      const rootMenus: MenuItem[] = [];
+      for (const item of allMenuItems) {
+        if (!viewableIds.has(item.id)) continue;
+
+        if (item.parentId) {
+          const parent = menuMap.get(item.parentId);
+          if (parent && viewableIds.has(parent.id)) {
+            parent.children.push(item);
+          }
+        } else {
+          rootMenus.push(item);
+        }
+      }
+
+      // Step 4: Sort root menus and their children by sortOrder
+      const sortFn = (a: MenuItem, b: MenuItem) => a.sortOrder - b.sortOrder;
+      rootMenus.sort(sortFn);
+      for (const item of allMenuItems) {
+        item.children.sort(sortFn);
+      }
+
+      return successResponse(correlationId, "User details fetched successfully", {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          status: user.status,
+          roles: userRoles.map((ur) => ur.roleName),
+          permissions: Object.values(mergedPermissions),
+          menus: rootMenus,
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return failedResponse(correlationId, "Internal server error", 500, message);
     }
   }
 }

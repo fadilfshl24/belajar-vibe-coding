@@ -39,6 +39,17 @@ export class PermissionController {
         );
       }
 
+      const menuIds = parsed.data.permissions.map(p => p.menuId);
+      const parentIds = await PermissionModel.getParentMenuIds(menuIds);
+      if (parentIds.length > 0) {
+        return failedResponse(
+          correlationId,
+          "Update data failed!",
+          400,
+          "Tidak bisa memberikan permission pada Parent Menu"
+        );
+      }
+
       await PermissionModel.bulkUpsert(parsed.data.permissions, ctx.user?.sub);
 
       await logActivity({

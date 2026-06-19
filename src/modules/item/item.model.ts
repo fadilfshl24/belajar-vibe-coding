@@ -105,14 +105,15 @@ export class ItemModel {
       .limit(1);
     if (result.length === 0) return undefined;
     const item = result[0];
-    if (item.itemType === "package") {
+    if (item?.itemType === "package") {
       const details = await db
         .select()
         .from(itemPackageDetails)
         .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
       return toItemDTO(item, details);
     }
-    return toItemDTO(item);
+
+    return item ? toItemDTO(item) : undefined;
   }
 
   static async findByCode(code: string): Promise<ItemRecord | undefined> {
@@ -159,13 +160,14 @@ export class ItemModel {
             .from(items)
             .where(and(eq(items.id, detail.childItemId), isNull(items.deletedAt)))
             .limit(1);
-          if (child.length === 0) {
+          const childItem = child[0];
+          if (!childItem) {
             throw new Error(`Child item ID ${detail.childItemId} not found`);
           }
-          if (child[0].itemType !== "single") {
+          if (childItem.itemType !== "single") {
             throw new Error(`Child item ID ${detail.childItemId} must be type 'single'`);
           }
-          const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage);
+          const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage ?? 0);
           const [insertedDetail] = await tx
             .insert(itemPackageDetails)
             .values({
@@ -173,7 +175,7 @@ export class ItemModel {
               childItemId: detail.childItemId,
               quantity: String(detail.quantity),
               price: String(detail.price),
-              discountPercentage: String(detail.discountPercentage),
+              discountPercentage: String(detail.discountPercentage ?? 0),
               discountPrice: String(dDiscPrice),
               priceAfterDiscount: String(dPriceAfter),
               isActive: true,
@@ -200,6 +202,7 @@ export class ItemModel {
       const updateData: any = {
         updatedAt: new Date(),
       };
+
       if (payload.code !== undefined) updateData.code = payload.code;
       if (payload.name !== undefined) updateData.name = payload.name;
       if (payload.description !== undefined) updateData.description = payload.description;
@@ -211,8 +214,8 @@ export class ItemModel {
       if (payload.itemType !== undefined) updateData.itemType = payload.itemType;
       if (payload.isActive !== undefined) updateData.isActive = payload.isActive;
 
-      const sellingPrice = payload.sellingPrice !== undefined ? payload.sellingPrice : Number(current.sellingPrice);
-      const discountPercentage = payload.discountPercentage !== undefined ? payload.discountPercentage : Number(current.discountPercentage);
+      const sellingPrice = payload.sellingPrice !== undefined ? payload.sellingPrice : Number(current?.sellingPrice);
+      const discountPercentage = payload.discountPercentage !== undefined ? payload.discountPercentage : Number(current?.discountPercentage);
 
       if (payload.purchasePrice !== undefined) updateData.purchasePrice = String(payload.purchasePrice);
       if (payload.sellingPrice !== undefined) updateData.sellingPrice = String(payload.sellingPrice);
@@ -230,7 +233,7 @@ export class ItemModel {
 
       if (!updatedItem) return undefined;
 
-      const itemType = payload.itemType !== undefined ? payload.itemType : current.itemType;
+      const itemType = payload.itemType !== undefined ? payload.itemType : current?.itemType;
 
       if (itemType === "package" && payload.details !== undefined) {
         await tx.delete(itemPackageDetails).where(eq(itemPackageDetails.packageItemId, id));
@@ -242,13 +245,14 @@ export class ItemModel {
             .from(items)
             .where(and(eq(items.id, detail.childItemId), isNull(items.deletedAt)))
             .limit(1);
-          if (child.length === 0) {
+          const childItem = child[0];
+          if (!childItem) {
             throw new Error(`Child item ID ${detail.childItemId} not found`);
           }
-          if (child[0].itemType !== "single") {
+          if (childItem.itemType !== "single") {
             throw new Error(`Child item ID ${detail.childItemId} must be type 'single'`);
           }
-          const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage);
+          const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage ?? 0);
           const [insertedDetail] = await tx
             .insert(itemPackageDetails)
             .values({
@@ -256,7 +260,7 @@ export class ItemModel {
               childItemId: detail.childItemId,
               quantity: String(detail.quantity),
               price: String(detail.price),
-              discountPercentage: String(detail.discountPercentage),
+              discountPercentage: String(detail.discountPercentage ?? 0),
               discountPrice: String(dDiscPrice),
               priceAfterDiscount: String(dPriceAfter),
               isActive: true,

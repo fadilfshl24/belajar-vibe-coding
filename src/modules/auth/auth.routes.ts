@@ -20,4 +20,5 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" })
   .get("/oauth/:provider", AuthController.oauthRedirect)
   .get("/oauth/:provider/callback", AuthController.oauthCallback)
   .use(authMiddleware)
+  .get("/me", AuthController.getMe)
   .post("/logout", AuthController.logout);

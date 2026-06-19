@@ -3,6 +3,7 @@
 ## Deskripsi
 
 Implementasi modul-modul Master Data baru sesuai Issue #11:
+
 - **Warehouse** (perluasan schema yang sudah ada)
 - **Category Item**
 - **UOM (Unit of Measurement)**
@@ -41,35 +42,42 @@ Selain itu, semua modul yang sudah ada (**Role, Menu, Permission, ActivityLog, U
 ### ─── PART 1: Schema Baru & Indexing ───
 
 #### [MODIFY] [warehouse.schema.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/warehouse/warehouse.schema.ts)
+
 - Tambahkan kolom yang belum ada: `description`, `province`, `city_regency`, `district`, `village`, `zip_code`, `latitude`, `longitude`, `is_active`
 - Tambahkan tabel **baru** `warehouseHeads` (pivot warehouse ↔ user untuk approval transaksi)
 - Tambahkan **DB Indexes**: `idx_warehouses_code`, `idx_warehouses_is_active`, `idx_warehouses_deleted_at`, `idx_warehouse_heads_warehouse_id`, `idx_warehouse_heads_user_id`
 
 #### [NEW] [category.schema.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/category/category.schema.ts)
+
 ```
 src/modules/category/category.schema.ts
 ```
+
 - Tabel `item_categories`: `id, code, name, description, is_active` + auditColumns
 - Indexes: `idx_item_categories_code`, `idx_item_categories_is_active`, `idx_item_categories_deleted_at`
 
 #### [NEW] [uom.schema.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/uom/uom.schema.ts)
+
 ```
 src/modules/uom/uom.schema.ts
 ```
+
 - Tabel `uoms`: `id, code, name, description, is_active` + auditColumns
 - Indexes: `idx_uoms_code`, `idx_uoms_is_active`, `idx_uoms_deleted_at`
 
 #### [NEW] [item.schema.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/item/item.schema.ts)
+
 ```
 src/modules/item/item.schema.ts
 ```
+
 - Enum `item_type`: `single | package`
 - Tabel `items`: `id, code, name, description, uom_id (FK), category_id (FK), barcode_text, barcode_type, image_url, item_type, purchase_price, selling_price, is_active, discount_percentage, discount_price, price_after_discount` + auditColumns
 - Tabel `item_package_details`: `id, package_item_id (FK→items), child_item_id (FK→items), quantity, is_active, price, discount_percentage, discount_price, price_after_discount` + auditColumns
 - Indexes pada `items`: `idx_items_code`, `idx_items_uom_id`, `idx_items_category_id`, `idx_items_item_type`, `idx_items_is_active`, `idx_items_deleted_at`, `idx_items_barcode_text`
 - Indexes pada `item_package_details`: `idx_item_pkg_details_package_item_id`, `idx_item_pkg_details_child_item_id`
 
-#### Tambahan Indexes pada Schema yang Sudah Ada:
+#### Tambahan Indexes pada Schema yang Sudah Ada
 
 | Schema | Indexes yang Ditambahkan |
 |---|---|
@@ -85,6 +93,7 @@ src/modules/item/item.schema.ts
 ### ─── PART 2: Modul Baru — Category ───
 
 #### [NEW] `src/modules/category/`
+
 ```
 category.schema.ts     ✓ (disebutkan di atas)
 category.validation.ts — Zod schema: createCategorySchema, updateCategorySchema, listQuerySchema
@@ -100,6 +109,7 @@ index.ts               — export routes & schema
 ### ─── PART 3: Modul Baru — UOM ───
 
 #### [NEW] `src/modules/uom/`
+
 ```
 uom.schema.ts          ✓ (disebutkan di atas)
 uom.validation.ts      — Zod schema: createUomSchema, updateUomSchema, listQuerySchema
@@ -115,6 +125,7 @@ index.ts               — export routes & schema
 ### ─── PART 4: Modul Baru — Item (termasuk Package) ───
 
 #### [NEW] `src/modules/item/`
+
 ```
 item.schema.ts         ✓ (disebutkan di atas)
 item.validation.ts     — Zod schema untuk create/update, termasuk validasi array `details` untuk tipe package
@@ -133,9 +144,11 @@ index.ts               — export routes & schema
 ### ─── PART 5: Perluasan Modul Warehouse ───
 
 #### [MODIFY] [warehouse.schema.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/warehouse/warehouse.schema.ts)
+
 - Modifikasi schema seperti dijelaskan di Part 1
 
-#### [NEW] File-file baru di `src/modules/warehouse/`:
+#### [NEW] File-file baru di `src/modules/warehouse/`
+
 ```
 warehouse.validation.ts — createWarehouseSchema, updateWarehouseSchema, createWarehouseHeadSchema, listQuerySchema
 warehouse.dto.ts        — WarehouseDTO, WarehouseHeadDTO + mapper
@@ -153,20 +166,25 @@ warehouse.routes.ts     — Full CRUD routes termasuk /api/warehouses/:id/heads
 Semua modul berikut tidak memiliki pagination di `getAll()`. Pattern yang digunakan mengacu pada implementasi di `UserController.getAll()` yang sudah ada sebagai referensi terbaik.
 
 #### [MODIFY] [role.model.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/role/role.model.ts)
+
 - Tambahkan parameter `{ page, limit, orderBy, searchTerm, filterColumn }` ke `findAll()`
 - Tambahkan method `countAll(searchTerm?, filterColumn?)`
 
 #### [MODIFY] [role.controller.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/role/role.controller.ts)
+
 - Update `getAll()` untuk membaca query params dan mengembalikan `PaginationMeta`
 
 #### [MODIFY] [menu.model.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/menu/menu.model.ts)
+
 - Tambahkan parameter pagination ke `findAll()`
 - Tambahkan method `countAll()`
 
 #### [MODIFY] [menu.controller.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/modules/menu/menu.controller.ts)
+
 - Update `getAll()` dengan pagination support
 
-#### Modul `permission` dan `activity-log`:
+#### Modul `permission` dan `activity-log`
+
 - Sama seperti di atas, update model dan controller untuk mendukung pagination
 
 ---
@@ -174,6 +192,7 @@ Semua modul berikut tidak memiliki pagination di `getAll()`. Pattern yang diguna
 ### ─── PART 7: Registrasi Modul Baru di app.ts ───
 
 #### [MODIFY] [app.ts](file:///d:/_Code/vibe-coding/belajar-vibe-coding/src/app.ts)
+
 - Import dan register routes baru: `categoryRoutes`, `uomRoutes`, `itemRoutes`
 - Warehouse sudah terdaftar (tapi routesnya belum ada — perlu dibuat)
 
@@ -182,6 +201,7 @@ Semua modul berikut tidak memiliki pagination di `getAll()`. Pattern yang diguna
 ## Ringkasan File Baru & Modifikasi
 
 ### File Baru (NEW)
+
 | Path | Keterangan |
 |---|---|
 | `src/modules/category/category.schema.ts` | Schema DB kategori |
@@ -212,6 +232,7 @@ Semua modul berikut tidak memiliki pagination di `getAll()`. Pattern yang diguna
 | `src/modules/warehouse/warehouse.routes.ts` | Elysia routes |
 
 ### File yang Dimodifikasi (MODIFY)
+
 | Path | Perubahan |
 |---|---|
 | `src/modules/warehouse/warehouse.schema.ts` | Tambah kolom + tabel warehouseHeads + indexes |
@@ -233,6 +254,7 @@ Semua modul berikut tidak memiliki pagination di `getAll()`. Pattern yang diguna
 ## Verification Plan
 
 ### Automated Tests (Migration)
+
 ```bash
 # Generate migration dari perubahan schema
 bun run db:generate
@@ -247,25 +269,30 @@ bun run dev
 ### Manual API Testing (Postman / Bruno / curl)
 
 **Modul Category:**
+
 - `POST /api/categories` → Buat category baru, validasi code unique
 - `GET /api/categories?page=1&limit=5&searchTerm=...` → Pastikan pagination berjalan
 - `PUT /api/categories/:id` → Update, pastikan log activity tercatat
 - `DELETE /api/categories/:id` → Soft delete, data tidak hilang dari DB
 
 **Modul UOM:**
+
 - Sama seperti Category
 
 **Modul Warehouse:**
+
 - `POST /api/warehouses` → Buat dengan koordinat GPS, pastikan tersimpan dengan presisi desimal yang benar
 - `POST /api/warehouses/:id/heads` → Assign user sebagai kepala gudang
 - Coba hapus UOM/Category yang dipakai oleh Item aktif → harus `400 Bad Request`
 
 **Modul Item:**
+
 - `POST /api/items` dengan `item_type: "single"` → Berhasil tanpa details
 - `POST /api/items` dengan `item_type: "package"` dan array `details` → Tersimpan dalam satu transaksi
 - `POST /api/items` dengan package + `child_item_id` yang tidak valid → `400` + rollback
 - Verifikasi kalkulasi otomatis: harga 100000, diskon 10% → `discount_price: 10000`, `price_after_discount: 90000`
 
 **Retrofit Pagination (Existing Modules):**
+
 - `GET /api/roles?page=1&limit=5` → Pastikan response mengandung `meta.pagination`
 - `GET /api/menus?page=1&limit=5` → Sama

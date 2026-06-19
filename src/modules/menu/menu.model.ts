@@ -90,9 +90,11 @@ export class MenuModel {
   }
 
   static async createMenu(payload: {
+    parentId?: string | null;
     name: string;
     code: string;
     path: string;
+    sortOrder: number;
   }): Promise<MenuRecord> {
     const result = await db.insert(menus).values(payload).returning();
     if (!result[0]) throw new Error("Failed to create menu");
@@ -101,7 +103,7 @@ export class MenuModel {
 
   static async updateMenu(
     id: string,
-    payload: { name?: string; code?: string; path?: string }
+    payload: { parentId?: string | null; name?: string; code?: string; path?: string; sortOrder?: number }
   ): Promise<MenuDTO | undefined> {
     const result = await db
       .update(menus)
@@ -112,6 +114,15 @@ export class MenuModel {
   }
 
   static async softDelete(id: string): Promise<boolean> {
+    const activeChildren = await db
+      .select({ total: count() })
+      .from(menus)
+      .where(and(eq(menus.parentId, id), isNull(menus.deletedAt)));
+
+    if ((activeChildren[0]?.total ?? 0) > 0) {
+      throw new Error("Cannot delete menu because it has active children");
+    }
+
     const result = await db
       .update(menus)
       .set({ deletedAt: new Date(), updatedAt: new Date() })

@@ -133,7 +133,11 @@ export class MenuController {
 
       return successResponse(correlationId, "Data has been deleted", null);
     } catch (err: unknown) {
-      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      if (msg.includes("Cannot delete menu because it has active children")) {
+        return failedResponse(correlationId, "Delete data failed!", 400, msg);
+      }
+      return failedResponse(correlationId, "Internal server error", 500, msg);
     }
   }
 }

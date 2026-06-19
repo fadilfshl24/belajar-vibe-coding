@@ -2,42 +2,65 @@ import { db } from "../index";
 import { menus } from "../../../modules/menu/menu.schema";
 import { eq } from "drizzle-orm";
 
-/**
- * Seed: Menus
- *
- * Membuat 9 menu default sesuai kebutuhan WMS.
- * Bersifat idempotent — tidak akan insert duplikat jika sudah ada.
- */
-export const MENUS = [
-  { name: "Full System Settings", code: "full_system_settings", path: "/system-settings" },
-  { name: "Role Menu Management", code: "role_menu_management", path: "/role-menu-management" },
-  { name: "Master Data", code: "master_data", path: "/master-data" },
-  { name: "Configuration App", code: "configuration_app", path: "/configuration" },
-  { name: "User Management", code: "user_management", path: "/users" },
-  { name: "Warehouse Management", code: "warehouse_management", path: "/warehouses" },
-  { name: "Inventory Management", code: "inventory_management", path: "/inventory" },
-  { name: "Order Management", code: "order_management", path: "/orders" },
-  { name: "Activity Log / Monitor", code: "activity_log", path: "/activity-logs" },
-] as const;
+export const PARENT_MENUS = [
+  { name: "Dashboard", code: "dashboard", path: "/", sortOrder: 1 },
+  { name: "Transaksi", code: "transaksi", path: "/transaksi", sortOrder: 2 },
+  { name: "Master Data", code: "master_data", path: "/master-data", sortOrder: 3 },
+  { name: "Administrasi", code: "administrasi", path: "/administrasi", sortOrder: 4 },
+];
+
+export const CHILD_MENUS: Record<string, any[]> = {
+  transaksi: [
+    { name: "Barang Masuk", code: "barang_masuk", path: "/stock-orders/inbound", sortOrder: 1 },
+    { name: "Barang Keluar", code: "barang_keluar", path: "/stock-orders/outbound", sortOrder: 2 },
+  ],
+  master_data: [
+    { name: "Master Barang", code: "item", path: "/items", sortOrder: 1 },
+    { name: "Master Gudang", code: "gudang", path: "/warehouses", sortOrder: 2 },
+    { name: "Kategori", code: "kategori", path: "/categories", sortOrder: 3 },
+    { name: "Satuan (UOM)", code: "uom", path: "/uoms", sortOrder: 4 },
+  ],
+  administrasi: [
+    { name: "Manajemen User", code: "user_management", path: "/users", sortOrder: 1 },
+    { name: "Roles", code: "role_management", path: "/roles", sortOrder: 2 },
+    { name: "Menus", code: "menu_management", path: "/menus", sortOrder: 3 },
+    { name: "Permissions", code: "permission_management", path: "/permissions", sortOrder: 4 },
+    { name: "Activity Logs", code: "activity_log", path: "/activity-logs", sortOrder: 5 },
+  ],
+};
 
 export async function seedMenus(): Promise<Record<string, string>> {
   console.log("📋 Seeding menus...");
   const menuIdMap: Record<string, string> = {};
 
-  for (const menu of MENUS) {
-    const existing = await db
-      .select({ id: menus.id })
-      .from(menus)
-      .where(eq(menus.code, menu.code))
-      .limit(1);
-
+  // Seed Parents
+  for (const menu of PARENT_MENUS) {
+    const existing = await db.select({ id: menus.id }).from(menus).where(eq(menus.code, menu.code)).limit(1);
     if (existing[0]) {
       menuIdMap[menu.code] = existing[0].id;
-      console.log(`  ✓ Menu "${menu.code}" already exists`);
+      console.log(`  ✓ Parent Menu "${menu.code}" already exists`);
     } else {
       const inserted = await db.insert(menus).values(menu).returning({ id: menus.id });
       menuIdMap[menu.code] = inserted[0]!.id;
-      console.log(`  + Menu "${menu.code}" created`);
+      console.log(`  + Parent Menu "${menu.code}" created`);
+    }
+  }
+
+  // Seed Children
+  for (const parentCode of Object.keys(CHILD_MENUS)) {
+    const parentId = menuIdMap[parentCode];
+    if (!parentId) continue;
+
+    for (const child of CHILD_MENUS[parentCode]) {
+      const existing = await db.select({ id: menus.id }).from(menus).where(eq(menus.code, child.code)).limit(1);
+      if (existing[0]) {
+        menuIdMap[child.code] = existing[0].id;
+        console.log(`    ✓ Child Menu "${child.code}" already exists`);
+      } else {
+        const inserted = await db.insert(menus).values({ ...child, parentId }).returning({ id: menus.id });
+        menuIdMap[child.code] = inserted[0]!.id;
+        console.log(`    + Child Menu "${child.code}" created under "${parentCode}"`);
+      }
     }
   }
 

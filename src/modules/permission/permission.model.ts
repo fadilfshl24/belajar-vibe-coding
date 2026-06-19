@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { roleMenuPermissions } from "./permission.schema";
 import { roles } from "../role/role.schema";
@@ -144,5 +144,20 @@ export class PermissionModel {
     const perm = result[0];
     if (!perm) return false;
     return perm[action] === true;
+  }
+
+  /**
+   * Mengecek apakah ada menuId yang merupakan parent menu (memiliki child).
+   * Mengembalikan array menuId yang merupakan parent.
+   */
+  static async getParentMenuIds(menuIds: string[]): Promise<string[]> {
+    if (menuIds.length === 0) return [];
+
+    const parents = await db
+      .selectDistinct({ parentId: menus.parentId })
+      .from(menus)
+      .where(and(inArray(menus.parentId, menuIds), isNull(menus.deletedAt)));
+
+    return parents.map(p => p.parentId).filter(Boolean) as string[];
   }
 }

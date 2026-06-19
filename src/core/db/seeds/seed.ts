@@ -22,8 +22,9 @@ async function main() {
     const [roleIdMap, menuIdMap] = await Promise.all([
       seedRoles(),
       seedMenus(),
-      seedSuperadmin(),
     ]);
+
+    await seedSuperadmin(roleIdMap["superadmin"]!);
 
     await seedPermissions(roleIdMap, menuIdMap);
 
