@@ -108,6 +108,14 @@ export class ItemController {
         return failedResponse(correlationId, "Create data failed!", 400, "Item code already exists");
       }
 
+      if (parsed.data.barcodeText) {
+        const existingBarcode = await ItemModel.findByBarcode(parsed.data.barcodeText);
+        if (existingBarcode) {
+          ctx.set.status = 400;
+          return failedResponse(correlationId, "Create data failed!", 400, "Barcode sudah terdaftar pada barang lain");
+        }
+      }
+
       const item = await ItemModel.create(parsed.data);
 
       await logActivity({
@@ -156,6 +164,14 @@ export class ItemController {
         if (codeExists && codeExists.id !== id) {
           ctx.set.status = 400;
           return failedResponse(correlationId, "Update data failed!", 400, "Item code already exists");
+        }
+      }
+
+      if (parsed.data.barcodeText) {
+        const existingBarcode = await ItemModel.findByBarcode(parsed.data.barcodeText);
+        if (existingBarcode && existingBarcode.id !== id) {
+          ctx.set.status = 400;
+          return failedResponse(correlationId, "Update data failed!", 400, "Barcode sudah terdaftar pada barang lain");
         }
       }
 

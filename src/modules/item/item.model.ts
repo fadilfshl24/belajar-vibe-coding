@@ -5,6 +5,8 @@ import { items, itemPackageDetails } from "./item.schema";
 import { toItemDTO, type ItemDTO } from "./item.dto";
 import type { ItemRecord, ItemPackageDetailRecord } from "./item.schema";
 import type { CreateItemInput, UpdateItemInput } from "./item.validation";
+import { uoms } from "../uom/uom.schema";
+import { itemCategories } from "../category/category.schema";
 
 // ---------------------------------------------------------------------------
 // Kalkulasi diskon otomatis
@@ -81,14 +83,26 @@ export class ItemModel {
     const offset = (page - 1) * limit;
 
     const result = await db
-      .select()
+      .select({
+        item: items,
+        category: {
+          id: itemCategories.id,
+          name: itemCategories.name,
+        },
+        uom: {
+          id: uoms.id,
+          name: uoms.name,
+        }
+      })
       .from(items)
+      .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+      .leftJoin(uoms, eq(items.uomId, uoms.id))
       .where(whereClause)
       .orderBy(direction === "asc" ? asc(column) : desc(column))
       .limit(limit)
       .offset(offset);
 
-    return result.map(item => toItemDTO(item));
+    return result.map(row => toItemDTO(row.item, undefined, row.category, row.uom));
   }
 
   static async countAll(searchTerm?: string, filterColumn?: string, itemType?: "single" | "package"): Promise<number> {
@@ -99,21 +113,34 @@ export class ItemModel {
 
   static async findById(id: string): Promise<ItemDTO | undefined> {
     const result = await db
-      .select()
+      .select({
+        item: items,
+        category: {
+          id: itemCategories.id,
+          name: itemCategories.name,
+        },
+        uom: {
+          id: uoms.id,
+          name: uoms.name,
+        }
+      })
       .from(items)
+      .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+      .leftJoin(uoms, eq(items.uomId, uoms.id))
       .where(and(eq(items.id, id), isNull(items.deletedAt)))
       .limit(1);
+
     if (result.length === 0) return undefined;
-    const item = result[0];
-    if (item?.itemType === "package") {
+    const row = result[0]!;
+    if (row.item.itemType === "package") {
       const details = await db
         .select()
         .from(itemPackageDetails)
         .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
-      return toItemDTO(item, details);
+      return toItemDTO(row.item, details, row.category, row.uom);
     }
 
-    return item ? toItemDTO(item) : undefined;
+    return toItemDTO(row.item, undefined, row.category, row.uom);
   }
 
   static async findByCode(code: string): Promise<ItemRecord | undefined> {
@@ -121,6 +148,15 @@ export class ItemModel {
       .select()
       .from(items)
       .where(and(eq(items.code, code), isNull(items.deletedAt)))
+      .limit(1);
+    return result[0];
+  }
+
+  static async findByBarcode(barcode: string): Promise<ItemRecord | undefined> {
+    const result = await db
+      .select()
+      .from(items)
+      .where(and(eq(items.barcodeText, barcode), isNull(items.deletedAt)))
       .limit(1);
     return result[0];
   }
@@ -185,7 +221,24 @@ export class ItemModel {
         }
       }
 
-      return toItemDTO(insertedItem, detailRecords.length > 0 ? detailRecords : undefined);
+      const category = await tx
+        .select({ id: itemCategories.id, name: itemCategories.name })
+        .from(itemCategories)
+        .where(eq(itemCategories.id, insertedItem.categoryId))
+        .limit(1);
+
+      const uom = await tx
+        .select({ id: uoms.id, name: uoms.name })
+        .from(uoms)
+        .where(eq(uoms.id, insertedItem.uomId))
+        .limit(1);
+
+      return toItemDTO(
+        insertedItem,
+        detailRecords.length > 0 ? detailRecords : undefined,
+        category[0] || null,
+        uom[0] || null
+      );
     });
   }
 
@@ -235,6 +288,18 @@ export class ItemModel {
 
       const itemType = payload.itemType !== undefined ? payload.itemType : current?.itemType;
 
+      const category = await tx
+        .select({ id: itemCategories.id, name: itemCategories.name })
+        .from(itemCategories)
+        .where(eq(itemCategories.id, updatedItem.categoryId))
+        .limit(1);
+
+      const uom = await tx
+        .select({ id: uoms.id, name: uoms.name })
+        .from(uoms)
+        .where(eq(uoms.id, updatedItem.uomId))
+        .limit(1);
+
       if (itemType === "package" && payload.details !== undefined) {
         await tx.delete(itemPackageDetails).where(eq(itemPackageDetails.packageItemId, id));
 
@@ -268,16 +333,16 @@ export class ItemModel {
             .returning();
           if (insertedDetail) detailRecords.push(insertedDetail);
         }
-        return toItemDTO(updatedItem, detailRecords);
+        return toItemDTO(updatedItem, detailRecords, category[0] || null, uom[0] || null);
       } else if (itemType === "package") {
         const details = await tx
           .select()
           .from(itemPackageDetails)
           .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
-        return toItemDTO(updatedItem, details);
+        return toItemDTO(updatedItem, details, category[0] || null, uom[0] || null);
       }
 
-      return toItemDTO(updatedItem);
+      return toItemDTO(updatedItem, undefined, category[0] || null, uom[0] || null);
     });
   }
 

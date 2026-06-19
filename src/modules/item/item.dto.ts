@@ -31,10 +31,17 @@ export interface ItemDTO {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date | null;
+  category?: { id: string; name: string } | null;
+  uom?: { id: string; name: string } | null;
   details?: ItemPackageDetailDTO[];
 }
 
-export function toItemDTO(record: ItemRecord, details?: ItemPackageDetailRecord[]): ItemDTO {
+export function toItemDTO(
+  record: ItemRecord,
+  details?: ItemPackageDetailRecord[],
+  category?: { id: string; name: string } | null,
+  uom?: { id: string; name: string } | null
+): ItemDTO {
   return {
     id: record.id,
     code: record.code,
@@ -54,6 +61,8 @@ export function toItemDTO(record: ItemRecord, details?: ItemPackageDetailRecord[
     isActive: record.isActive,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt ?? null,
+    ...(category ? { category } : {}),
+    ...(uom ? { uom } : {}),
     ...(details
       ? {
           details: details.map((d) => ({
