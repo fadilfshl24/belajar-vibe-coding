@@ -413,7 +413,7 @@ export class AuthController {
       const allMenus = await db
         .select()
         .from(menus)
-        .where(isNull(menus.deletedAt))
+        .where(and(eq(menus.isActive, true), isNull(menus.deletedAt)))
         .orderBy(asc(menus.sortOrder));
 
       interface MenuItem {
@@ -423,6 +423,8 @@ export class AuthController {
         code: string;
         path: string;
         sortOrder: number;
+        icon: string | null;
+        isActive: boolean;
         children: MenuItem[];
       }
 
@@ -434,6 +436,8 @@ export class AuthController {
         code: m.code,
         path: m.path,
         sortOrder: m.sortOrder,
+        icon: m.icon,
+        isActive: m.isActive,
         children: [],
       }));
 

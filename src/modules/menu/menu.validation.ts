@@ -14,6 +14,8 @@ const createMenuSchema = z.object({
     .max(255)
     .startsWith("/", "Path must start with /"),
   sortOrder: z.number().int("sortOrder must be an integer"),
+  icon: z.string().max(255).optional().nullable(),
+  isActive: z.boolean().optional(),
 });
 
 export function parseCreateMenuInput(body: unknown) {

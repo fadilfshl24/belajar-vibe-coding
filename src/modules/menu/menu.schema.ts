@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, index, integer, boolean } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 
@@ -12,6 +12,8 @@ import { auditColumns } from "../../core/db/audit";
  * - code : Identifier unik untuk dipakai di backend/frontend (e.g., "master_data")
  * - path : URL path menu (e.g., "/master-data")
  * - sortOrder: Urutan penampilan menu.
+ * - icon : Nama identifier icon Lucide.
+ * - isActive: Status keaktifan menu.
  */
 export const menus = pgTable(
   "menus",
@@ -22,6 +24,8 @@ export const menus = pgTable(
     code: varchar("code", { length: 255 }).notNull().unique(),
     path: varchar("path", { length: 255 }).notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    icon: varchar("icon", { length: 255 }),
+    isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
   },
   (t) => [

@@ -95,6 +95,8 @@ export class MenuModel {
     code: string;
     path: string;
     sortOrder: number;
+    icon?: string | null;
+    isActive?: boolean;
   }): Promise<MenuRecord> {
     const result = await db.insert(menus).values(payload).returning();
     if (!result[0]) throw new Error("Failed to create menu");
@@ -103,7 +105,15 @@ export class MenuModel {
 
   static async updateMenu(
     id: string,
-    payload: { parentId?: string | null; name?: string; code?: string; path?: string; sortOrder?: number }
+    payload: {
+      parentId?: string | null;
+      name?: string;
+      code?: string;
+      path?: string;
+      sortOrder?: number;
+      icon?: string | null;
+      isActive?: boolean;
+    }
   ): Promise<MenuDTO | undefined> {
     const result = await db
       .update(menus)

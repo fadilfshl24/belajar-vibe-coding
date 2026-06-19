@@ -7,6 +7,8 @@ export interface MenuDTO {
   code: string;
   path: string;
   sortOrder: number;
+  icon: string | null;
+  isActive: boolean;
   createdAt: Date;
   updatedAt: Date | null;
 }
@@ -19,6 +21,8 @@ export function toMenuDTO(record: MenuRecord): MenuDTO {
     code: record.code,
     path: record.path,
     sortOrder: record.sortOrder,
+    icon: record.icon,
+    isActive: record.isActive,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt ?? null,
   };
