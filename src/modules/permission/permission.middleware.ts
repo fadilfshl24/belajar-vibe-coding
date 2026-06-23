@@ -33,24 +33,21 @@ export function permissionGuard(
 ) {
   return new Elysia({ name: `permissionGuard:${menuCode}:${action}` }).derive(
     { as: "scoped" },
-    async ({ headers, set }: any) => {
+    async ({ headers, user, set }: any) => {
       const correlationId =
         (headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
-      // Ambil roleId dari header khusus (dikirim oleh client bersama token)
-      const roleId = headers["x-role-id"] as string | undefined;
-
-      if (!roleId) {
-        set.status = 403;
+      if (!user?.sub) {
+        set.status = 401;
         throw new Response(
           JSON.stringify(
-            failedResponse(correlationId, "Access denied.", 403, "Role ID is required in header x-role-id")
+            failedResponse(correlationId, "Unauthorized.", 401, "User session is missing or invalid.")
           ),
-          { status: 403, headers: { "Content-Type": "application/json" } }
+          { status: 401, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      const hasAccess = await PermissionModel.checkAccess(roleId, menuCode, action);
+      const hasAccess = await PermissionModel.checkAccessByUserId(user.sub, menuCode, action);
 
       if (!hasAccess) {
         set.status = 403;
@@ -60,14 +57,14 @@ export function permissionGuard(
               correlationId,
               "Access denied.",
               403,
-              `Role does not have '${action}' permission for menu '${menuCode}'`
+              `You do not have '${action}' permission for menu '${menuCode}'`
             )
           ),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      return { roleId };
+      return { permissionChecked: true };
     }
   );
 }

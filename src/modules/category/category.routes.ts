@@ -1,11 +1,12 @@
 import { Elysia } from "elysia";
 import { CategoryController } from "./category.controller";
 import { authMiddleware } from "../auth/auth.middleware";
+import { permissionGuard } from "../permission/permission.middleware";
 
 export const categoryRoutes = new Elysia({ prefix: "/api/categories" })
   .use(authMiddleware)
-  .get("/", CategoryController.getAll)
-  .get("/:id", CategoryController.getById)
-  .post("/", CategoryController.create)
-  .put("/:id", CategoryController.update)
-  .delete("/:id", CategoryController.remove);
+  .get("/", CategoryController.getAll, { beforeHandle: [permissionGuard("kategori", "canView")] })
+  .get("/:id", CategoryController.getById, { beforeHandle: [permissionGuard("kategori", "canView")] })
+  .post("/", CategoryController.create, { beforeHandle: [permissionGuard("kategori", "canCreate")] })
+  .put("/:id", CategoryController.update, { beforeHandle: [permissionGuard("kategori", "canUpdate")] })
+  .delete("/:id", CategoryController.remove, { beforeHandle: [permissionGuard("kategori", "canDelete")] });

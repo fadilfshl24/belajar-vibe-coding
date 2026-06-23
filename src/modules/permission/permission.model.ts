@@ -1,7 +1,7 @@
 import { and, eq, isNull, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { roleMenuPermissions } from "./permission.schema";
-import { roles } from "../role/role.schema";
+import { roles, userWarehouseRoles } from "../role/role.schema";
 import { menus } from "../menu/menu.schema";
 import type { PermissionMatrixRow } from "./permission.dto";
 import type { UpdatePermissionInput } from "./permission.validation";
@@ -35,6 +35,39 @@ export class PermissionModel {
   }
 
   /**
+   * Mengambil matriks permission untuk satu role tertentu secara lengkap.
+   * Digunakan untuk halaman UI Role Menu Management untuk spesifik role.
+   */
+  static async getMatrixByRoleId(roleId: string): Promise<PermissionMatrixRow[]> {
+    const result = await db
+      .select({
+        id: roleMenuPermissions.id,
+        roleId: roleMenuPermissions.roleId,
+        roleName: roles.name,
+        menuId: roleMenuPermissions.menuId,
+        menuName: menus.name,
+        menuCode: menus.code,
+        canView: roleMenuPermissions.canView,
+        canCreate: roleMenuPermissions.canCreate,
+        canUpdate: roleMenuPermissions.canUpdate,
+        canDelete: roleMenuPermissions.canDelete,
+      })
+      .from(roleMenuPermissions)
+      .innerJoin(roles, eq(roleMenuPermissions.roleId, roles.id))
+      .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
+      .where(
+        and(
+          eq(roleMenuPermissions.roleId, roleId),
+          isNull(roleMenuPermissions.deletedAt)
+        )
+      )
+      .orderBy(menus.name);
+
+    return result;
+  }
+
+  /**
+
    * Mengambil permission berdasarkan role ID.
    * Digunakan oleh permissionGuard middleware untuk validasi akses.
    */
@@ -144,6 +177,43 @@ export class PermissionModel {
     const perm = result[0];
     if (!perm) return false;
     return perm[action] === true;
+  }
+
+  /**
+   * Cek apakah user memiliki akses tertentu ke menu tertentu berdasarkan seluruh role yang dimilikinya.
+   * Bersifat dinamis dan real-time langsung ke database.
+   */
+  static async checkAccessByUserId(
+    userId: string,
+    menuCode: string,
+    action: "canView" | "canCreate" | "canUpdate" | "canDelete"
+  ): Promise<boolean> {
+    const userRolesList = await db
+      .select({ roleId: userWarehouseRoles.roleId })
+      .from(userWarehouseRoles)
+      .where(and(eq(userWarehouseRoles.userId, userId), isNull(userWarehouseRoles.deletedAt)));
+
+    if (userRolesList.length === 0) return false;
+    const roleIds = userRolesList.map(r => r.roleId);
+
+    const result = await db
+      .select({
+        canView: roleMenuPermissions.canView,
+        canCreate: roleMenuPermissions.canCreate,
+        canUpdate: roleMenuPermissions.canUpdate,
+        canDelete: roleMenuPermissions.canDelete,
+      })
+      .from(roleMenuPermissions)
+      .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
+      .where(
+        and(
+          inArray(roleMenuPermissions.roleId, roleIds),
+          eq(menus.code, menuCode),
+          isNull(roleMenuPermissions.deletedAt)
+        )
+      );
+
+    return result.some(r => r[action] === true);
   }
 
   /**

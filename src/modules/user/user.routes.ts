@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { UserController } from "./user.controller";
 import { authMiddleware } from "../auth/auth.middleware";
+import { permissionGuard } from "../permission/permission.middleware";
 
 /**
  * User Routes
@@ -15,9 +16,9 @@ import { authMiddleware } from "../auth/auth.middleware";
  */
 export const userRoutes = new Elysia({ prefix: "/api/users" })
   .use(authMiddleware)
-  .post("/", UserController.register)
-  .put("/:id", UserController.updateUser)
-  .get("/", UserController.getAll)
-  .get("/:id", UserController.getById)
-  .patch("/:id/status", UserController.updateStatus)
-  .delete("/:id", UserController.deleteUser);
+  .post("/", UserController.register, { beforeHandle: [permissionGuard("user_management", "canCreate")] })
+  .put("/:id", UserController.updateUser, { beforeHandle: [permissionGuard("user_management", "canUpdate")] })
+  .get("/", UserController.getAll, { beforeHandle: [permissionGuard("user_management", "canView")] })
+  .get("/:id", UserController.getById, { beforeHandle: [permissionGuard("user_management", "canView")] })
+  .patch("/:id/status", UserController.updateStatus, { beforeHandle: [permissionGuard("user_management", "canUpdate")] })
+  .delete("/:id", UserController.deleteUser, { beforeHandle: [permissionGuard("user_management", "canDelete")] });

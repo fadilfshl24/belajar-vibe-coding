@@ -30,3 +30,24 @@ export function parseBulkUpdatePermissionsInput(body: unknown) {
 }
 
 export type BulkUpdatePermissionsInput = z.infer<typeof bulkUpdatePermissionsSchema>;
+
+/**
+ * Schema untuk update permission satu baris tanpa roleId (diambil dari params).
+ */
+const updatePermissionByRoleSchema = z.object({
+  menuId: z.string().uuid("menuId must be a valid UUID"),
+  canView: z.boolean().default(false),
+  canCreate: z.boolean().default(false),
+  canUpdate: z.boolean().default(false),
+  canDelete: z.boolean().default(false),
+});
+
+const bulkUpdateByRoleSchema = z.object({
+  permissions: z.array(updatePermissionByRoleSchema).min(1, "At least one permission is required"),
+});
+
+export function parseBulkUpdateByRoleInput(body: unknown) {
+  return bulkUpdateByRoleSchema.safeParse(body);
+}
+
+export type BulkUpdateByRoleInput = z.infer<typeof bulkUpdateByRoleSchema>;
