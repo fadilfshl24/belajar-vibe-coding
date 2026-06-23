@@ -15,6 +15,7 @@ const listQuerySchema = z.object({
   orderBy: z.string().default("{'CreatedAt':'DESC'}"),
   searchTerm: z.string().optional(),
   filterColumn: z.string().optional(),
+  isActive: z.string().optional().transform(val => val === "true" ? true : val === "false" ? false : undefined),
 });
 
 export function parseCreateCategoryInput(body: unknown) {

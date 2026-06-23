@@ -72,6 +72,9 @@ export const itemListQuerySchema = z.object({
   searchTerm: z.string().optional(),
   filterColumn: z.string().optional(),
   itemType: z.enum(["single", "package"]).optional(),
+  categoryId: z.string().uuid().optional(),
+  uomId: z.string().uuid().optional(),
+  isActive: z.string().optional().transform(val => val === "true" ? true : val === "false" ? false : undefined),
 });
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;

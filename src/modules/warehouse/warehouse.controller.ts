@@ -19,12 +19,12 @@ export class WarehouseController {
         return failedResponse(correlationId, "Invalid query params", 400, parsed.error.issues[0]?.message);
       }
 
-      const { page, limit, orderBy, searchTerm, filterColumn } = parsed.data;
+      const { page, limit, orderBy, searchTerm, filterColumn, isActive } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
       const [totalRecord, records] = await Promise.all([
-        WarehouseModel.countAll(searchTerm, filterColumn),
-        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn }),
+        WarehouseModel.countAll({ searchTerm, filterColumn, isActive }),
+        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);
@@ -35,6 +35,7 @@ export class WarehouseController {
           limit: String(limit),
           ...(filterColumn ? { filterColumn } : {}),
           ...(searchTerm ? { searchTerm } : {}),
+          ...(isActive !== undefined ? { isActive: String(isActive) } : {}),
           ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}),
         });
         return `${baseUrl}?${params.toString()}`;

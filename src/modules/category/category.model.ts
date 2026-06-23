@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { itemCategories } from "./category.schema";
@@ -31,15 +31,25 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(filterColumn?: string, searchTerm?: string) {
-  if (!filterColumn || !searchTerm) return isNull(itemCategories.deletedAt);
-  const term = searchTerm.trim();
-  if (term === "") return isNull(itemCategories.deletedAt);
-  switch (filterColumn) {
-    case "name": return and(ilike(itemCategories.name, `%${term}%`), isNull(itemCategories.deletedAt));
-    case "code": return and(ilike(itemCategories.code, `%${term}%`), isNull(itemCategories.deletedAt));
-    default: return isNull(itemCategories.deletedAt);
+function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; isActive?: boolean }) {
+  const { filterColumn, searchTerm, isActive } = params;
+  let conds = isNull(itemCategories.deletedAt);
+  if (isActive !== undefined) {
+    conds = and(conds, eq(itemCategories.isActive, isActive))!;
   }
+  if (searchTerm) {
+    const term = searchTerm.trim();
+    if (term !== "") {
+      if (filterColumn === "name") {
+        conds = and(conds, ilike(itemCategories.name, `%${term}%`))!;
+      } else if (filterColumn === "code") {
+        conds = and(conds, ilike(itemCategories.code, `%${term}%`))!;
+      } else {
+        conds = and(conds, or(ilike(itemCategories.name, `%${term}%`), ilike(itemCategories.code, `%${term}%`)))!;
+      }
+    }
+  }
+  return conds;
 }
 
 export class CategoryModel {
@@ -49,10 +59,11 @@ export class CategoryModel {
     orderBy: string;
     searchTerm?: string;
     filterColumn?: string;
+    isActive?: boolean;
   }): Promise<CategoryDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, isActive } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition(filterColumn, searchTerm);
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, isActive });
     const offset = (page - 1) * limit;
 
     const result = await db
@@ -66,8 +77,8 @@ export class CategoryModel {
     return result.map(toCategoryDTO);
   }
 
-  static async countAll(searchTerm?: string, filterColumn?: string): Promise<number> {
-    const whereClause = buildFilterCondition(filterColumn, searchTerm);
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean }): Promise<number> {
+    const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(itemCategories).where(whereClause);
     return result[0]?.total ?? 0;
   }

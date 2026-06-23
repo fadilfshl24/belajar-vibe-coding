@@ -13,12 +13,17 @@ export interface UserDTO {
   status: number;
   createdAt: Date;
   updatedAt: Date | null;
+  roleId?: string | null;
+  role?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 /**
  * Mengonversi UserRecord (dari DB) ke UserDTO (aman untuk dikirim ke client).
  */
-export function toUserDTO(record: UserRecord): UserDTO {
+export function toUserDTO(record: UserRecord, role?: { id: string; name: string } | null): UserDTO {
   return {
     id: record.id,
     name: record.name,
@@ -26,5 +31,7 @@ export function toUserDTO(record: UserRecord): UserDTO {
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt ?? null,
+    roleId: role?.id ?? null,
+    role: role ?? null,
   };
 }

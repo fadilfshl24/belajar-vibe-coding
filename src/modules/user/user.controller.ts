@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { Context } from "elysia";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
-import { parseCreateUserInput } from "./user.validation";
+import { parseCreateUserInput, parseUpdateUserInput, parseListQuery } from "./user.validation";
 import { UserModel } from "./user.model";
 import { toUserDTO } from "./user.dto";
 import { logActivity } from "../../core/utils/activityLogger";
@@ -29,7 +29,7 @@ export class UserController {
         );
       }
 
-      const { name, email, password } = parsed.data;
+      const { name, email, password, roleId, isActive } = parsed.data;
 
       const existingUser = await UserModel.findByEmail(email.toLowerCase().trim());
       if (existingUser) {
@@ -37,7 +37,13 @@ export class UserController {
       }
 
       const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
-      const newUser = await UserModel.createUser({ name, email, password: hashedPassword });
+      const newUser = await UserModel.createUser({
+        name,
+        email,
+        password: hashedPassword,
+        roleId,
+        isActive,
+      });
 
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
@@ -61,6 +67,79 @@ export class UserController {
   }
 
   // ---------------------------------------------------------------------------
+  // PUT /api/users/:id — Update user
+  // ---------------------------------------------------------------------------
+  static async updateUser(ctx: Context) {
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = (ctx.params as Record<string, string | undefined>).id ?? "";
+      if (!UUID_REGEX.test(id)) {
+        return failedResponse(correlationId, "Update data failed!", 400, "Invalid UUID format");
+      }
+
+      const parsed = parseUpdateUserInput(ctx.body);
+      if (!parsed.success) {
+        return failedResponse(
+          correlationId,
+          "Update data failed!",
+          400,
+          parsed.error.issues[0]?.message ?? "Input data not found or invalid!"
+        );
+      }
+
+      const existingUser = await UserModel.findById(id);
+      if (!existingUser) return failedResponse(correlationId, "Data not found!", 400);
+
+      const { name, email, password, roleId, isActive } = parsed.data;
+
+      // if email is changing, check if already taken
+      if (email && email.toLowerCase().trim() !== existingUser.email.toLowerCase().trim()) {
+        const existingEmail = await UserModel.findByEmail(email.toLowerCase().trim());
+        if (existingEmail) {
+          return failedResponse(correlationId, "Update data failed!", 400, "Email already registered");
+        }
+      }
+
+      const updatePayload: Parameters<typeof UserModel.update>[1] = {
+        name,
+        email,
+        roleId,
+        isActive,
+      };
+
+      if (password) {
+        updatePayload.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+      }
+
+      const updatedUser = await UserModel.update(id, updatePayload);
+      if (!updatedUser) {
+        return failedResponse(correlationId, "Update data failed!", 500, "Failed to update user database record");
+      }
+
+      const userAgent = ctx.headers["user-agent"];
+      const ipAddress =
+        (ctx.headers["x-forwarded-for"] as string | undefined) ??
+        (ctx.headers["x-real-ip"] as string | undefined) ??
+        "";
+
+      await logActivity({
+        userId: updatedUser.id,
+        action: "UPDATE_USER",
+        description: `User ${updatedUser.name} updated successfully`,
+        ipAddress,
+        userAgent,
+      });
+
+      return successResponse(correlationId, "Data has been updated", null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return failedResponse(correlationId, "Internal server error", 500, message);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // GET /api/users — List users (paginated)
   // ---------------------------------------------------------------------------
   static async getAll(ctx: Context) {
@@ -68,23 +147,44 @@ export class UserController {
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const query = ctx.query as Record<string, string | undefined>;
-      const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1);
-      const rawLimit = parseInt(query.limit ?? "10", 10) || 10;
+      const parsed = parseListQuery(ctx.query);
+      if (!parsed.success) {
+        return failedResponse(
+          correlationId,
+          "Get list data failed!",
+          400,
+          parsed.error.issues[0]?.message ?? "Invalid query parameters"
+        );
+      }
+
+      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId } = parsed.data;
       const internalLimit = rawLimit === 1000 ? Number.MAX_SAFE_INTEGER : rawLimit;
-      const filterColumn = query.filterColumn ?? "";
-      const searchTerm = query.searchTerm ?? "";
-      const orderBy = query.orderBy ?? DEFAULT_ORDER_BY;
 
       const [totalRecord, records] = await Promise.all([
-        UserModel.countAll(searchTerm || undefined, filterColumn || undefined),
-        UserModel.findAll({ page, limit: internalLimit, orderBy, searchTerm: searchTerm || undefined, filterColumn: filterColumn || undefined }),
+        UserModel.countAll({ searchTerm, filterColumn, status, roleId }),
+        UserModel.findAll({
+          page,
+          limit: internalLimit,
+          orderBy,
+          searchTerm,
+          filterColumn,
+          status,
+          roleId,
+        }),
       ]);
 
       const totalPage = rawLimit === 1000 ? 1 : Math.ceil(totalRecord / rawLimit);
       const baseUrl = (process.env.APP_URL ?? "http://localhost:3000") + "/api/users";
       const buildUrl = (p: number) => {
-        const params = new URLSearchParams({ page: String(p), limit: String(rawLimit), ...(filterColumn ? { filterColumn } : {}), ...(searchTerm ? { searchTerm } : {}), ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}) });
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: String(rawLimit),
+          ...(filterColumn ? { filterColumn } : {}),
+          ...(searchTerm ? { searchTerm } : {}),
+          ...(status !== undefined ? { status: String(status) } : {}),
+          ...(roleId ? { roleId } : {}),
+          ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {})
+        });
         return `${baseUrl}?${params.toString()}`;
       };
 
@@ -94,7 +194,9 @@ export class UserController {
         previousPage: page > 1,
         nextPageURL: page < totalPage ? buildUrl(page + 1) : "",
         previousPageURL: page > 1 ? buildUrl(page - 1) : "",
-        filterColumn, searchTerm, orderBy,
+        filterColumn: filterColumn ?? "",
+        searchTerm: searchTerm ?? "",
+        orderBy,
       };
 
       return successResponse(correlationId, "Data found!", { records }, pagination);
@@ -120,7 +222,7 @@ export class UserController {
       const user = await UserModel.findById(id);
       if (!user) return failedResponse(correlationId, "Data not found!", 400);
 
-      return successResponse(correlationId, "Data found!", { record: toUserDTO(user) });
+      return successResponse(correlationId, "Data found!", { record: user });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return failedResponse(correlationId, "Internal server error", 500, message);

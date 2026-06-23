@@ -22,12 +22,12 @@ export class ItemController {
         return failedResponse(correlationId, "Invalid query params", 400, parsed.error.issues[0]?.message);
       }
 
-      const { page, limit, orderBy, searchTerm, filterColumn, itemType } = parsed.data;
+      const { page, limit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
       const [totalRecord, records] = await Promise.all([
-        ItemModel.countAll(searchTerm, filterColumn, itemType),
-        ItemModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, itemType }),
+        ItemModel.countAll({ searchTerm, filterColumn, itemType, categoryId, uomId, isActive }),
+        ItemModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);
@@ -39,6 +39,9 @@ export class ItemController {
           ...(filterColumn ? { filterColumn } : {}),
           ...(searchTerm ? { searchTerm } : {}),
           ...(itemType ? { itemType } : {}),
+          ...(categoryId ? { categoryId } : {}),
+          ...(uomId ? { uomId } : {}),
+          ...(isActive !== undefined ? { isActive: String(isActive) } : {}),
           ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}),
         });
         return `${baseUrl}?${params.toString()}`;

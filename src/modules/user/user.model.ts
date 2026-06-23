@@ -1,9 +1,11 @@
-import { and, asc, count, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { users } from "./user.schema";
 import { toUserDTO, type UserDTO } from "./user.dto";
 import type { UserRecord } from "./user.schema";
+import { roles, userWarehouseRoles } from "../role/role.schema";
+import { warehouses } from "../warehouse/warehouse.schema";
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -35,24 +37,36 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(filterColumn?: string, searchTerm?: string) {
-  if (!filterColumn || !searchTerm) return undefined;
-  const term = searchTerm.trim();
-  if (term === "") return undefined;
+function buildFilterCondition(params: {
+  searchTerm?: string;
+  filterColumn?: string;
+  status?: number;
+  roleId?: string;
+}) {
+  const { searchTerm, filterColumn, status, roleId } = params;
+  let conds = isNull(users.deletedAt);
 
-  switch (filterColumn) {
-    case "name":
-      return and(ilike(users.name, `%${term}%`), isNull(users.deletedAt));
-    case "email":
-      return and(ilike(users.email, `%${term}%`), isNull(users.deletedAt));
-    case "status": {
-      const parsed = parseInt(term, 10);
-      if (isNaN(parsed)) return undefined;
-      return and(eq(users.status, parsed as 0 | 1), isNull(users.deletedAt));
-    }
-    default:
-      return isNull(users.deletedAt);
+  if (status !== undefined) {
+    conds = and(conds, eq(users.status, status as 0 | 1))!;
   }
+
+  if (roleId) {
+    conds = and(conds, eq(userWarehouseRoles.roleId, roleId))!;
+  }
+
+  if (searchTerm) {
+    const term = searchTerm.trim();
+    if (term !== "") {
+      if (filterColumn === "name") {
+        conds = and(conds, ilike(users.name, `%${term}%`))!;
+      } else if (filterColumn === "email") {
+        conds = and(conds, ilike(users.email, `%${term}%`))!;
+      } else {
+        conds = and(conds, or(ilike(users.name, `%${term}%`), ilike(users.email, `%${term}%`)))!;
+      }
+    }
+  }
+  return conds;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,18 +83,38 @@ export class UserModel {
     return result[0];
   }
 
-  static async findById(id: string): Promise<UserRecord | undefined> {
+  static async findById(id: string): Promise<UserDTO | undefined> {
     const result = await db
-      .select()
+      .select({
+        user: users,
+        role: {
+          id: roles.id,
+          name: roles.name,
+        }
+      })
       .from(users)
+      .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+      .leftJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
       .where(and(eq(users.id, id), isNull(users.deletedAt)))
       .limit(1);
-    return result[0];
+
+    if (result.length === 0) return undefined;
+    return toUserDTO(result[0]!.user, result[0]!.role?.id ? result[0]!.role : null);
   }
 
-  static async countAll(searchTerm?: string, filterColumn?: string): Promise<number> {
-    const whereClause = buildFilterCondition(filterColumn, searchTerm) ?? isNull(users.deletedAt);
-    const result = await db.select({ total: count() }).from(users).where(whereClause);
+  static async countAll(params: {
+    searchTerm?: string;
+    filterColumn?: string;
+    status?: number;
+    roleId?: string;
+  }): Promise<number> {
+    const { searchTerm, filterColumn, status, roleId } = params;
+    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+    let query = db.select({ total: count() }).from(users);
+    if (roleId) {
+      query = query.leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt))) as any;
+    }
+    const result = await query.where(whereClause);
     return result[0]?.total ?? 0;
   }
 
@@ -90,40 +124,136 @@ export class UserModel {
     orderBy: string;
     searchTerm?: string;
     filterColumn?: string;
+    status?: number;
+    roleId?: string;
   }): Promise<UserDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition(filterColumn, searchTerm) ?? isNull(users.deletedAt);
+    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
     const offset = (page - 1) * limit;
 
     const result = await db
-      .select()
+      .select({
+        user: users,
+        role: {
+          id: roles.id,
+          name: roles.name,
+        }
+      })
       .from(users)
+      .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+      .leftJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
       .where(whereClause)
       .orderBy(direction === "asc" ? asc(column) : desc(column))
       .limit(limit)
       .offset(offset);
 
-    return result.map(toUserDTO);
+    return result.map(row => toUserDTO(row.user, row.role?.id ? row.role : null));
   }
 
   static async createUser(payload: {
     name: string;
     email: string;
-    password: string;
+    password?: string;
+    roleId?: string;
+    isActive?: boolean;
   }): Promise<UserRecord> {
-    const result = await db
-      .insert(users)
-      .values({
-        name: payload.name.trim(),
-        email: payload.email.toLowerCase().trim(),
-        password: payload.password || null,
-        status: 1,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(users)
+        .values({
+          name: payload.name.trim(),
+          email: payload.email.toLowerCase().trim(),
+          password: payload.password || null,
+          status: payload.isActive ?? true ? 1 : 0,
+        })
+        .returning();
 
-    if (!result[0]) throw new Error("Insert did not return a record");
-    return result[0];
+      if (!inserted) throw new Error("Insert did not return a record");
+
+      if (payload.roleId) {
+        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
+        const warehouseId = whs[0]?.id;
+        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
+
+        await tx.insert(userWarehouseRoles).values({
+          userId: inserted.id,
+          warehouseId,
+          roleId: payload.roleId,
+        });
+      }
+
+      return inserted;
+    });
+  }
+
+  static async update(
+    id: string,
+    payload: {
+      name?: string;
+      email?: string;
+      password?: string;
+      roleId?: string | null;
+      isActive?: boolean;
+    }
+  ): Promise<UserDTO | undefined> {
+    return await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), isNull(users.deletedAt)))
+        .limit(1);
+      if (existing.length === 0) return undefined;
+
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+      if (payload.name !== undefined) updateData.name = payload.name.trim();
+      if (payload.email !== undefined) updateData.email = payload.email.toLowerCase().trim();
+      if (payload.password !== undefined) updateData.password = payload.password;
+      if (payload.isActive !== undefined) updateData.status = payload.isActive ? 1 : 0;
+
+      const [updated] = await tx
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, id))
+        .returning();
+
+      if (!updated) return undefined;
+
+      if (payload.roleId !== undefined) {
+        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
+        const warehouseId = whs[0]?.id;
+        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
+
+        await tx.delete(userWarehouseRoles).where(eq(userWarehouseRoles.userId, id));
+
+        if (payload.roleId) {
+          await tx.insert(userWarehouseRoles).values({
+            userId: id,
+            warehouseId,
+            roleId: payload.roleId,
+          });
+        }
+      }
+
+      const result = await tx
+        .select({
+          user: users,
+          role: {
+            id: roles.id,
+            name: roles.name,
+          }
+        })
+        .from(users)
+        .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+        .leftJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(eq(users.id, id))
+        .limit(1);
+
+      if (result.length === 0) return undefined;
+      return toUserDTO(result[0]!.user, result[0]!.role?.id ? result[0]!.role : null);
+    });
   }
 
   static async updateStatus(id: string, status: number): Promise<UserDTO | undefined> {
@@ -136,7 +266,6 @@ export class UserModel {
     return result[0] ? toUserDTO(result[0]) : undefined;
   }
 
-  /** Soft delete */
   static async deleteById(id: string): Promise<boolean> {
     const result = await db
       .update(users)

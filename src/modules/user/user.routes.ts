@@ -16,6 +16,7 @@ import { authMiddleware } from "../auth/auth.middleware";
 export const userRoutes = new Elysia({ prefix: "/api/users" })
   .use(authMiddleware)
   .post("/", UserController.register)
+  .put("/:id", UserController.updateUser)
   .get("/", UserController.getAll)
   .get("/:id", UserController.getById)
   .patch("/:id/status", UserController.updateStatus)
