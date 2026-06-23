@@ -9,6 +9,9 @@ import { warehouseRoutes } from "./modules/warehouse";
 import { categoryRoutes } from "./modules/category";
 import { uomRoutes } from "./modules/uom";
 import { itemRoutes } from "./modules/item";
+import { transactionRoutes } from "./modules/transaction/transaction.routes";
+import { inventoryRoutes } from "./modules/inventory/inventory.routes";
+import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
 
 /**
  * App Factory
@@ -42,6 +45,10 @@ export const app = new Elysia()
   .use(categoryRoutes)
   .use(uomRoutes)
   .use(itemRoutes)
+  // Transaction & Inventory Modules
+  .use(transactionRoutes)
+  .use(inventoryRoutes)
+  .use(dashboardRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),

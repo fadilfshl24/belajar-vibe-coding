@@ -43,6 +43,13 @@
       "when": 1781855442075,
       "tag": "0005_fearless_emma_frost",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782200328777,
+      "tag": "0006_neat_kang",
+      "breakpoints": true
     }
   ]
 }

@@ -31,40 +31,35 @@ export function permissionGuard(
   menuCode: string,
   action: "canView" | "canCreate" | "canUpdate" | "canDelete"
 ) {
-  return new Elysia({ name: `permissionGuard:${menuCode}:${action}` }).derive(
-    { as: "scoped" },
-    async ({ headers, user, set }: any) => {
-      const correlationId =
-        (headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+  return async ({ headers, user, set }: any) => {
+    const correlationId =
+      (headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
-      if (!user?.sub) {
-        set.status = 401;
-        throw new Response(
-          JSON.stringify(
-            failedResponse(correlationId, "Unauthorized.", 401, "User session is missing or invalid.")
-          ),
-          { status: 401, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const hasAccess = await PermissionModel.checkAccessByUserId(user.sub, menuCode, action);
-
-      if (!hasAccess) {
-        set.status = 403;
-        throw new Response(
-          JSON.stringify(
-            failedResponse(
-              correlationId,
-              "Access denied.",
-              403,
-              `You do not have '${action}' permission for menu '${menuCode}'`
-            )
-          ),
-          { status: 403, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      return { permissionChecked: true };
+    if (!user?.sub) {
+      set.status = 401;
+      throw new Response(
+        JSON.stringify(
+          failedResponse(correlationId, "Unauthorized.", 401, "User session is missing or invalid.")
+        ),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
     }
-  );
+
+    const hasAccess = await PermissionModel.checkAccessByUserId(user.sub, menuCode, action);
+
+    if (!hasAccess) {
+      set.status = 403;
+      throw new Response(
+        JSON.stringify(
+          failedResponse(
+            correlationId,
+            "Access denied.",
+            403,
+            `You do not have '${action}' permission for menu '${menuCode}'`
+          )
+        ),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  };
 }
