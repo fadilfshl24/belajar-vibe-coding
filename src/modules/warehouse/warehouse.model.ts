@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { warehouses, warehouseHeads } from "./warehouse.schema";
+import { provinces, regencies, districts, villages } from "../region/region.schema";
 import { toWarehouseDTO, toWarehouseHeadDTO, type WarehouseDTO, type WarehouseHeadDTO } from "./warehouse.dto";
 import type { WarehouseRecord, WarehouseHeadRecord } from "./warehouse.schema";
 import type { CreateWarehouseInput, UpdateWarehouseInput } from "./warehouse.validation";
@@ -71,14 +72,31 @@ export class WarehouseModel {
     const offset = (page - 1) * limit;
 
     const result = await db
-      .select()
+      .select({
+        warehouse: warehouses,
+        provinceName: provinces.name,
+        regencyName: regencies.name,
+        districtName: districts.name,
+        villageName: villages.name,
+      })
       .from(warehouses)
+      .leftJoin(provinces, eq(warehouses.province, provinces.id))
+      .leftJoin(regencies, eq(warehouses.cityRegency, regencies.id))
+      .leftJoin(districts, eq(warehouses.district, districts.id))
+      .leftJoin(villages, eq(warehouses.village, villages.id))
       .where(whereClause)
       .orderBy(direction === "asc" ? asc(column) : desc(column))
       .limit(limit)
       .offset(offset);
 
-    return result.map(toWarehouseDTO);
+    return result.map(row => {
+      const dto = toWarehouseDTO(row.warehouse);
+      dto.provinceName = row.provinceName;
+      dto.cityRegencyName = row.regencyName;
+      dto.districtName = row.districtName;
+      dto.villageName = row.villageName;
+      return dto;
+    });
   }
 
   static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean }): Promise<number> {
@@ -89,20 +107,54 @@ export class WarehouseModel {
 
   static async findById(id: string): Promise<WarehouseRecord | undefined> {
     const result = await db
-      .select()
+      .select({
+        warehouse: warehouses,
+        provinceName: provinces.name,
+        regencyName: regencies.name,
+        districtName: districts.name,
+        villageName: villages.name,
+      })
       .from(warehouses)
+      .leftJoin(provinces, eq(warehouses.province, provinces.id))
+      .leftJoin(regencies, eq(warehouses.cityRegency, regencies.id))
+      .leftJoin(districts, eq(warehouses.district, districts.id))
+      .leftJoin(villages, eq(warehouses.village, villages.id))
       .where(and(eq(warehouses.id, id), isNull(warehouses.deletedAt)))
       .limit(1);
-    return result[0];
+    
+    if (!result[0]) return undefined;
+    const dto = toWarehouseDTO(result[0].warehouse);
+    dto.provinceName = result[0].provinceName;
+    dto.cityRegencyName = result[0].regencyName;
+    dto.districtName = result[0].districtName;
+    dto.villageName = result[0].villageName;
+    return dto;
   }
 
   static async findByCode(code: string): Promise<WarehouseRecord | undefined> {
     const result = await db
-      .select()
+      .select({
+        warehouse: warehouses,
+        provinceName: provinces.name,
+        regencyName: regencies.name,
+        districtName: districts.name,
+        villageName: villages.name,
+      })
       .from(warehouses)
+      .leftJoin(provinces, eq(warehouses.province, provinces.id))
+      .leftJoin(regencies, eq(warehouses.cityRegency, regencies.id))
+      .leftJoin(districts, eq(warehouses.district, districts.id))
+      .leftJoin(villages, eq(warehouses.village, villages.id))
       .where(and(eq(warehouses.code, code), isNull(warehouses.deletedAt)))
       .limit(1);
-    return result[0];
+      
+    if (!result[0]) return undefined;
+    const dto = toWarehouseDTO(result[0].warehouse);
+    dto.provinceName = result[0].provinceName;
+    dto.cityRegencyName = result[0].regencyName;
+    dto.districtName = result[0].districtName;
+    dto.villageName = result[0].villageName;
+    return dto;
   }
 
   static async create(payload: CreateWarehouseInput): Promise<WarehouseRecord> {

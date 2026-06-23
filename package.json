@@ -9,6 +9,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "bun run src/core/db/seeds/seed.ts",
+    "seed:regions": "bun run src/core/db/seed-regions.ts",
     "test:flow:auth": "bun run src/flow-testing-feature/test-flow.ts",
     "test:flow:warehouse": "bun run src/flow-testing-feature/test-flow-warehouse.ts",
     "test:flow:category": "bun run src/flow-testing-feature/test-flow-category.ts",

@@ -12,6 +12,7 @@ import { itemRoutes } from "./modules/item";
 import { transactionRoutes } from "./modules/transaction/transaction.routes";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes";
 import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
+import { regionRoutes } from "./modules/region/region.routes";
 
 /**
  * App Factory
@@ -49,6 +50,7 @@ export const app = new Elysia()
   .use(transactionRoutes)
   .use(inventoryRoutes)
   .use(dashboardRoutes)
+  .use(regionRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),

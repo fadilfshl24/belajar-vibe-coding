@@ -10,6 +10,10 @@ export interface WarehouseDTO {
   cityRegency: string | null;
   district: string | null;
   village: string | null;
+  provinceName?: string | null;
+  cityRegencyName?: string | null;
+  districtName?: string | null;
+  villageName?: string | null;
   zipCode: string | null;
   latitude: string | null;
   longitude: string | null;

@@ -50,6 +50,13 @@
       "when": 1782200328777,
       "tag": "0006_neat_kang",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782202224052,
+      "tag": "0007_lonely_morlocks",
+      "breakpoints": true
     }
   ]
 }
