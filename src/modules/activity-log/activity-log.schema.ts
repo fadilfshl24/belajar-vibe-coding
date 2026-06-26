@@ -21,6 +21,7 @@ export const activityLogs = pgTable(
     userId: uuid("user_id").references(() => users.id), // Nullable untuk aksi sistem/guest
     username: varchar("username", { length: 255 }), // Disimpan agar audit tidak rusak jika user didelete
     action: varchar("action", { length: 100 }).notNull(),
+    module: varchar("module", { length: 100 }), // e.g. AUTH, WAREHOUSE, ITEM, CATEGORY, UOM, USER, ROLE
     description: text("description").notNull(),
     ipAddress: varchar("ip_address", { length: 255 }),
     userAgent: text("user_agent"),
@@ -29,6 +30,7 @@ export const activityLogs = pgTable(
   (t) => [
     index("idx_activity_logs_user_id").on(t.userId),
     index("idx_activity_logs_action").on(t.action),
+    index("idx_activity_logs_module").on(t.module),
     index("idx_activity_logs_created_at").on(t.createdAt),
   ]
 );

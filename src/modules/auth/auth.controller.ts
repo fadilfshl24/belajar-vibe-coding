@@ -62,6 +62,7 @@ export class AuthController {
       await logActivity({
         userId: user.id,
         action: "LOGIN",
+        module: "AUTH",
         description: `User ${user.name} berhasil masuk ke sistem`,
         ipAddress,
         userAgent,
@@ -148,6 +149,7 @@ export class AuthController {
         await logActivity({
           userId: ctx.user.sub,
           action: "LOGOUT",
+          module: "AUTH",
           description: `User ${ctx.user.email} keluar dari sistem`,
           ipAddress,
           userAgent,
@@ -297,9 +299,9 @@ export class AuthController {
       const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? "7d";
 
       if (isNewUser) {
-        await logActivity({ userId, action: "REGISTER", description: `User ${name} berhasil mendaftar ke sistem via OAuth ${provider}`, ipAddress, userAgent });
+        await logActivity({ userId, action: "REGISTER", module: "AUTH", description: `User ${name} berhasil mendaftar ke sistem via OAuth ${provider}`, ipAddress, userAgent });
       }
-      await logActivity({ userId, action: "LOGIN", description: `User ${name} berhasil masuk ke sistem via OAuth ${provider}`, ipAddress, userAgent });
+      await logActivity({ userId, action: "LOGIN", module: "AUTH", description: `User ${name} berhasil masuk ke sistem via OAuth ${provider}`, ipAddress, userAgent });
 
       return successResponse(correlationId, "OAuth Authentication Successful!", {
         record: { accessToken: session.id, refreshToken: session.id, tokenType: "Bearer", expiresIn },

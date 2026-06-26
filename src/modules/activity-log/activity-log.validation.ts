@@ -5,6 +5,7 @@ export const activityLogQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   userId: z.string().uuid().optional(),
   action: z.string().optional(),
+  module: z.string().optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
   searchTerm: z.string().optional(),

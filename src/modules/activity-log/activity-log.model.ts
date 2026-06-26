@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, ilike, isNull, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, isNull, isNotNull, lte, or } from "drizzle-orm";
 import { db } from "../../core/db";
 import { activityLogs } from "./activity-log.schema";
 import { toActivityLogDTO, type ActivityLogDTO } from "./activity-log.dto";
@@ -25,6 +25,30 @@ export class ActivityLogModel {
 
     return result.map(toActivityLogDTO);
   }
+
+  /**
+   * Mengembalikan daftar unik (distinct) modul dan aksi yang pernah tercatat.
+   * Digunakan sebagai data source untuk dropdown filter di frontend.
+   */
+  static async getDistinctFilters(): Promise<{ modules: string[]; actions: string[] }> {
+    const [moduleRows, actionRows] = await Promise.all([
+      db
+        .selectDistinct({ module: activityLogs.module })
+        .from(activityLogs)
+        .where(and(isNull(activityLogs.deletedAt), isNotNull(activityLogs.module)))
+        .orderBy(activityLogs.module),
+      db
+        .selectDistinct({ action: activityLogs.action })
+        .from(activityLogs)
+        .where(isNull(activityLogs.deletedAt))
+        .orderBy(activityLogs.action),
+    ]);
+
+    return {
+      modules: moduleRows.map((r) => r.module!).filter(Boolean),
+      actions: actionRows.map((r) => r.action),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -40,6 +64,10 @@ function buildWhere(filters: ActivityLogQuery) {
 
   if (filters.action) {
     conditions.push(eq(activityLogs.action, filters.action.toUpperCase()));
+  }
+
+  if (filters.module) {
+    conditions.push(eq(activityLogs.module, filters.module.toUpperCase()));
   }
 
   if (filters.startDate) {

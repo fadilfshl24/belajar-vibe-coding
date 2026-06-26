@@ -36,6 +36,7 @@ export class ActivityLogController {
         const params = new URLSearchParams({ page: String(p), limit: String(filters.limit) });
         if (filters.userId) params.set("userId", filters.userId);
         if (filters.action) params.set("action", filters.action);
+        if (filters.module) params.set("module", filters.module);
         if (filters.searchTerm) params.set("searchTerm", filters.searchTerm);
         return `${baseUrl}?${params.toString()}`;
       };
@@ -49,12 +50,27 @@ export class ActivityLogController {
         previousPage: filters.page > 1,
         nextPageURL: filters.page < totalPage ? buildUrl(filters.page + 1) : "",
         previousPageURL: filters.page > 1 ? buildUrl(filters.page - 1) : "",
-        filterColumn: filters.userId ? "userId" : "",
+        filterColumn: filters.module ?? filters.userId ?? "",
         searchTerm: filters.searchTerm ?? "",
         orderBy: "{'CreatedAt':'DESC'}",
       };
 
       return successResponse(correlationId, "Data found!", { records }, pagination);
+    } catch (err: unknown) {
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/activity-logs/filters — Daftar distinct Modul & Aksi
+  // ---------------------------------------------------------------------------
+  static async getFilters(ctx: Context) {
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const filters = await ActivityLogModel.getDistinctFilters();
+      return successResponse(correlationId, "Filters fetched!", filters);
     } catch (err: unknown) {
       return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
     }
