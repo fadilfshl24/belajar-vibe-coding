@@ -10,7 +10,12 @@ export const createPurchaseRequestSchema = z.object({
   customerId: z.string().uuid("Invalid customer ID").optional().nullable().or(z.literal("")),
   warehouseId: z.string().uuid("Invalid warehouse ID"),
   description: z.string().optional().or(z.literal("")),
-  details: z.array(prDetailSchema).min(1, "At least 1 item is required"),
+  details: z.array(prDetailSchema)
+    .min(1, "At least 1 item is required")
+    .refine((items) => {
+      const itemIds = items.map(i => i.itemId).filter(id => id);
+      return new Set(itemIds).size === itemIds.length;
+    }, { message: "Duplicate items are not allowed", path: ["root"] }),
 });
 
 export const updatePurchaseRequestSchema = createPurchaseRequestSchema.partial();

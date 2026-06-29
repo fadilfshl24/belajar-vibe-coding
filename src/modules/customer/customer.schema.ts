@@ -19,6 +19,8 @@ export const customers = pgTable(
     village: varchar("village", { length: 100 }),
     zipCode: varchar("zip_code", { length: 20 }),
     image: text("image"),
+    latitude: varchar("latitude", { length: 50 }),
+    longitude: varchar("longitude", { length: 50 }),
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
   },

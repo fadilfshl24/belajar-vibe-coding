@@ -71,6 +71,20 @@
       "when": 1782459710629,
       "tag": "0009_neat_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782704833420,
+      "tag": "0010_milky_maddog",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782705413642,
+      "tag": "0011_chilly_invisible_woman",
+      "breakpoints": true
     }
   ]
 }

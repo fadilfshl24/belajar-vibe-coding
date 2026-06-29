@@ -12,6 +12,8 @@ export const createVendorSchema = z.object({
   village: z.string().max(100).optional().or(z.literal("")),
   zipCode: z.string().max(20).optional().or(z.literal("")),
   image: z.string().optional().or(z.literal("")),
+  latitude: z.string().max(50).optional().or(z.literal("")),
+  longitude: z.string().max(50).optional().or(z.literal("")),
   isActive: z.boolean().optional().default(true),
 });
 

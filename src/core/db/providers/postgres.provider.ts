@@ -12,6 +12,8 @@ import type { IDatabaseAdapter } from "../adapter";
  * Konfigurasi via environment variable:
  * - DATABASE_URL: PostgreSQL connection string (wajib)
  */
+import * as schema from "../schema";
+
 export class PostgresProvider implements IDatabaseAdapter {
   private client: ReturnType<typeof drizzle>;
 
@@ -25,7 +27,7 @@ export class PostgresProvider implements IDatabaseAdapter {
     }
 
     const pgClient = postgres(connectionString);
-    this.client = drizzle(pgClient);
+    this.client = drizzle(pgClient, { schema });
   }
 
   getClient(): ReturnType<typeof drizzle> {
