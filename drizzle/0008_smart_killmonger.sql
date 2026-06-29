@@ -1,0 +1,2 @@
+-- ALTER TABLE "activity_logs" ADD COLUMN "module" varchar(100);--> statement-breakpoint
+-- CREATE INDEX "idx_activity_logs_module" ON "activity_logs" USING btree ("module");

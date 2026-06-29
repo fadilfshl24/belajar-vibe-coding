@@ -13,12 +13,17 @@ export const CHILD_MENUS: Record<string, any[]> = {
   transaksi: [
     { name: "Barang Masuk", code: "barang_masuk", path: "/stock-orders/inbound", sortOrder: 1, icon: "arrow-up-right", isActive: true },
     { name: "Barang Keluar", code: "barang_keluar", path: "/stock-orders/outbound", sortOrder: 2, icon: "arrow-down-right", isActive: true },
+    { name: "Purchase Request", code: "purchase_request", path: "/purchase-requests", sortOrder: 3, icon: "file-text", isActive: true },
+    { name: "Purchase Order", code: "purchase_order", path: "/purchase-orders", sortOrder: 4, icon: "shopping-cart", isActive: true },
   ],
   master_data: [
     { name: "Master Barang", code: "item", path: "/items", sortOrder: 1, icon: "package", isActive: true },
     { name: "Master Gudang", code: "gudang", path: "/warehouses", sortOrder: 2, icon: "warehouse", isActive: true },
     { name: "Kategori", code: "kategori", path: "/categories", sortOrder: 3, icon: "tags", isActive: true },
     { name: "Satuan (UOM)", code: "uom", path: "/uoms", sortOrder: 4, icon: "ruler", isActive: true },
+    { name: "Customer", code: "customer", path: "/customers", sortOrder: 5, icon: "users", isActive: true },
+    { name: "Vendor", code: "vendor", path: "/vendors", sortOrder: 6, icon: "truck", isActive: true },
+    { name: "Platform", code: "platform", path: "/platforms", sortOrder: 7, icon: "globe", isActive: true },
   ],
   administrasi: [
     { name: "Manajemen User", code: "user_management", path: "/users", sortOrder: 1, icon: "users", isActive: true },

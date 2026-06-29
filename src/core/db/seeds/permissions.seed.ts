@@ -51,6 +51,11 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "superadmin", menuCode: "menu_management", ...ALL },
   { roleName: "superadmin", menuCode: "permission_management", ...ALL },
   { roleName: "superadmin", menuCode: "activity_log", ...VIEW_ONLY },
+  { roleName: "superadmin", menuCode: "customer", ...ALL },
+  { roleName: "superadmin", menuCode: "vendor", ...ALL },
+  { roleName: "superadmin", menuCode: "platform", ...ALL },
+  { roleName: "superadmin", menuCode: "purchase_request", ...ALL },
+  { roleName: "superadmin", menuCode: "purchase_order", ...ALL },
 
   // --- Admin ---
   { roleName: "admin", menuCode: "dashboard", ...ALL },
@@ -65,6 +70,11 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "admin", menuCode: "menu_management", ...NONE },
   { roleName: "admin", menuCode: "permission_management", ...NONE },
   { roleName: "admin", menuCode: "activity_log", ...VIEW_ONLY },
+  { roleName: "admin", menuCode: "customer", ...NONE },
+  { roleName: "admin", menuCode: "vendor", ...NONE },
+  { roleName: "admin", menuCode: "platform", ...NONE },
+  { roleName: "admin", menuCode: "purchase_request", ...NONE },
+  { roleName: "admin", menuCode: "purchase_order", ...NONE },
 
   // --- Warehouse Head ---
   { roleName: "warehouse_head", menuCode: "dashboard", ...ALL },
@@ -79,6 +89,11 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "warehouse_head", menuCode: "menu_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "permission_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "activity_log", ...NONE },
+  { roleName: "warehouse_head", menuCode: "customer", ...NONE },
+  { roleName: "warehouse_head", menuCode: "vendor", ...NONE },
+  { roleName: "warehouse_head", menuCode: "platform", ...NONE },
+  { roleName: "warehouse_head", menuCode: "purchase_request", ...NONE },
+  { roleName: "warehouse_head", menuCode: "purchase_order", ...NONE },
 
   // --- Staff ---
   { roleName: "staff", menuCode: "dashboard", ...ALL },
@@ -93,6 +108,11 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "staff", menuCode: "menu_management", ...NONE },
   { roleName: "staff", menuCode: "permission_management", ...NONE },
   { roleName: "staff", menuCode: "activity_log", ...NONE },
+  { roleName: "staff", menuCode: "customer", ...NONE },
+  { roleName: "staff", menuCode: "vendor", ...NONE },
+  { roleName: "staff", menuCode: "platform", ...NONE },
+  { roleName: "staff", menuCode: "purchase_request", ...NONE },
+  { roleName: "staff", menuCode: "purchase_order", ...NONE },
 
   // --- User ---
   { roleName: "user", menuCode: "dashboard", ...ALL },
@@ -107,6 +127,11 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "user", menuCode: "menu_management", ...NONE },
   { roleName: "user", menuCode: "permission_management", ...NONE },
   { roleName: "user", menuCode: "activity_log", ...NONE },
+  { roleName: "user", menuCode: "customer", ...NONE },
+  { roleName: "user", menuCode: "vendor", ...NONE },
+  { roleName: "user", menuCode: "platform", ...NONE },
+  { roleName: "user", menuCode: "purchase_request", ...NONE },
+  { roleName: "user", menuCode: "purchase_order", ...NONE },
 ];
 
 export async function seedPermissions(

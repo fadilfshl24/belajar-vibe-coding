@@ -13,6 +13,11 @@ export interface LogActivityParams {
    */
   action: string;
   /**
+   * Nama modul yang terpengaruh. Contoh:
+   * AUTH, USER, ROLE, WAREHOUSE, ITEM, CATEGORY, UOM, TRANSACTION, INVENTORY.
+   */
+  module?: string;
+  /**
    * Deskripsi lengkap aktivitas. Format standar:
    * "User [Username] melakukan [aksi] terhadap [entitas]"
    */
@@ -58,6 +63,7 @@ export async function logActivity(params: LogActivityParams): Promise<void> {
       userId: params.userId,
       username,
       action: params.action,
+      module: params.module,
       description: params.description,
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,

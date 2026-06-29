@@ -13,6 +13,11 @@ import { transactionRoutes } from "./modules/transaction/transaction.routes";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes";
 import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
 import { regionRoutes } from "./modules/region/region.routes";
+import { customerRoutes } from "./modules/customer";
+import { vendorRoutes } from "./modules/vendor";
+import { platformRoutes } from "./modules/platform";
+import { purchaseRequestRoutes } from "./modules/purchase-request";
+import { purchaseOrderRoutes } from "./modules/purchase-order";
 
 /**
  * App Factory
@@ -46,11 +51,16 @@ export const app = new Elysia()
   .use(categoryRoutes)
   .use(uomRoutes)
   .use(itemRoutes)
+  .use(customerRoutes)
+  .use(vendorRoutes)
+  .use(platformRoutes)
   // Transaction & Inventory Modules
   .use(transactionRoutes)
   .use(inventoryRoutes)
   .use(dashboardRoutes)
   .use(regionRoutes)
+  .use(purchaseRequestRoutes)
+  .use(purchaseOrderRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),
