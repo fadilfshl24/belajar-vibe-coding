@@ -1,3 +1,5 @@
+import { sendErrorToDiscord } from "./discordLogger";
+
 export interface PaginationMeta {
   page: number;
   limit: number;
@@ -141,6 +143,13 @@ export function failedResponse(
   code: 400 | 401 | 403 | 404 | 500,
   exceptionMessage?: string
 ): StandardResponse<null> {
+  if (code === 500) {
+    const errorMsg = exceptionMessage || message || "Internal Server Error";
+    sendErrorToDiscord(new Error(errorMsg), { correlationId }).catch((err) => {
+      console.error("[response.ts] Failed to dispatch Discord log async:", err);
+    });
+  }
+
   return {
     meta: {
       correlationId,
