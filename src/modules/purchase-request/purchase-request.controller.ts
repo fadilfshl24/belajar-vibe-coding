@@ -10,6 +10,7 @@ import {
 } from "./purchase-request.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class PurchaseRequestController {
   static async getAll(ctx: Context) {
@@ -85,6 +86,14 @@ export class PurchaseRequestController {
       }
 
       const newPR = await PurchaseRequestModel.create(parsed.data as CreatePRInput, userId);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_ORDER",
+        module: "PURCHASE_REQUEST",
+        description: `User ${ctx.user?.email} membuat Purchase Request "${newPR.code}" dengan ID ${newPR.id}`,
+      });
+
       ctx.set.status = 201;
       return successResponse(correlationId, "Purchase request created successfully", { record: newPR });
     } catch (err: unknown) {
@@ -115,6 +124,14 @@ export class PurchaseRequestController {
       }
 
       const updated = await PurchaseRequestModel.update(id, parsed.data as UpdatePRInput);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_REQUEST",
+        description: `User ${ctx.user?.email} memperbarui Purchase Request "${updated.code}" dengan ID ${updated.id}`,
+      });
+
       return successResponse(correlationId, "Purchase request updated successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -142,6 +159,14 @@ export class PurchaseRequestController {
       const userId = ctx.user?.sub;
       
       const updated = await PurchaseRequestModel.patchStatus(id, parsed.data.status, userId);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_REQUEST",
+        description: `User ${ctx.user?.email} mengubah status Purchase Request "${updated.code}" menjadi ${parsed.data.status}`,
+      });
+
       return successResponse(correlationId, "Purchase request status updated", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -165,6 +190,14 @@ export class PurchaseRequestController {
       }
 
       const deleted = await PurchaseRequestModel.softDelete(id);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_ORDER",
+        module: "PURCHASE_REQUEST",
+        description: `User ${ctx.user?.email} menghapus Purchase Request "${pr.code}"`,
+      });
+
       return successResponse(correlationId, "Purchase request deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

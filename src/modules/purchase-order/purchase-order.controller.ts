@@ -11,6 +11,7 @@ import {
 } from "./purchase-order.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class PurchaseOrderController {
   static async getAll(ctx: Context) {
@@ -80,6 +81,14 @@ export class PurchaseOrderController {
       }
 
       const newPO = await PurchaseOrderModel.create(parsed.data as CreatePOInput);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} membuat Purchase Order "${newPO.code}" dengan ID ${newPO.id}`,
+      });
+
       ctx.set.status = 201;
       return successResponse(correlationId, "Purchase order created successfully", { record: newPO });
     } catch (err: unknown) {
@@ -110,6 +119,14 @@ export class PurchaseOrderController {
       }
 
       const updated = await PurchaseOrderModel.update(id, parsed.data as UpdatePOInput);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} memperbarui Purchase Order "${updated.code}" dengan ID ${updated.id}`,
+      });
+
       return successResponse(correlationId, "Purchase order updated successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -135,6 +152,14 @@ export class PurchaseOrderController {
       }
 
       const updated = await PurchaseOrderModel.patchStatus(id, parsed.data.status);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} mengubah status Purchase Order "${updated.code}" menjadi ${parsed.data.status}`,
+      });
+
       return successResponse(correlationId, "Purchase order status updated", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -165,6 +190,14 @@ export class PurchaseOrderController {
       }
 
       const updated = await PurchaseOrderModel.receiveGoods(id, parsed.data.items);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} mencatat penerimaan barang untuk Purchase Order "${updated.code}"`,
+      });
+
       return successResponse(correlationId, "Goods receipt recorded successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -188,6 +221,14 @@ export class PurchaseOrderController {
       }
 
       const deleted = await PurchaseOrderModel.softDelete(id);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} menghapus Purchase Order "${po.code}"`,
+      });
+
       return successResponse(correlationId, "Purchase order deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

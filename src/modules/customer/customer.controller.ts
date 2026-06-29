@@ -9,6 +9,7 @@ import {
 } from "./customer.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class CustomerController {
   static async getAll(ctx: Context) {
@@ -85,6 +86,13 @@ export class CustomerController {
 
       const newCustomer = await CustomerModel.create(parsed.data as CreateCustomerInput);
       
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_DATA",
+        module: "CUSTOMER",
+        description: `User ${ctx.user?.email} menambahkan data Customer "${newCustomer.name}" dengan ID ${newCustomer.id}`,
+      });
+      
       ctx.set.status = 201;
       return successResponse(correlationId, "Customer created successfully", { record: newCustomer });
     } catch (err: unknown) {
@@ -118,6 +126,13 @@ export class CustomerController {
         return failedResponse(correlationId, "Customer not found", 404);
       }
 
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_DATA",
+        module: "CUSTOMER",
+        description: `User ${ctx.user?.email} memperbarui data Customer "${updated.name}" dengan ID ${updated.id}`,
+      });
+
       return successResponse(correlationId, "Customer updated successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -135,6 +150,14 @@ export class CustomerController {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Customer not found or already deleted", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_DATA",
+        module: "CUSTOMER",
+        description: `User ${ctx.user?.email} menghapus data Customer dengan ID ${id}`,
+      });
+
       return successResponse(correlationId, "Customer deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

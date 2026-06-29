@@ -9,6 +9,7 @@ import {
 } from "./vendor.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class VendorController {
   static async getAll(ctx: Context) {
@@ -84,6 +85,14 @@ export class VendorController {
       }
 
       const newVendor = await VendorModel.create(parsed.data as CreateVendorInput);
+      
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} menambahkan data Vendor "${newVendor.name}" dengan ID ${newVendor.id}`,
+      });
+      
       ctx.set.status = 201;
       return successResponse(correlationId, "Vendor created successfully", { record: newVendor });
     } catch (err: unknown) {
@@ -117,6 +126,13 @@ export class VendorController {
         return failedResponse(correlationId, "Vendor not found", 404);
       }
 
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} memperbarui data Vendor "${updated.name}" dengan ID ${updated.id}`,
+      });
+
       return successResponse(correlationId, "Vendor updated successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -134,6 +150,14 @@ export class VendorController {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Vendor not found or already deleted", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} menghapus data Vendor dengan ID ${id}`,
+      });
+
       return successResponse(correlationId, "Vendor deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;
