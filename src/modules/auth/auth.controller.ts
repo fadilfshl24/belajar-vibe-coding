@@ -496,6 +496,7 @@ export class AuthController {
           email: user.email,
           status: user.status,
           roles: userRoles.map((ur) => ur.roleName),
+          roleWarehouseMappings: userRoles.map((ur) => ({ roleName: ur.roleName, warehouseId: ur.warehouseId })),
           permissions: Object.values(mergedPermissions),
           menus: rootMenus,
         },

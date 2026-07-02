@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = 'UOM'
 
 export class UomController {
   static async getAll(ctx: Context) {
@@ -99,10 +100,11 @@ export class UomController {
         return failedResponse(correlationId, "Create data failed!", 400, "UOM code already exists");
       }
 
-      const uom = await UomModel.create(parsed.data);
+      const uom = await UomModel.create(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data UOM "${uom.name}" dengan ID ${uom.id}`,
       });
@@ -144,10 +146,11 @@ export class UomController {
         }
       }
 
-      const updated = await UomModel.update(id, parsed.data);
+      const updated = await UomModel.update(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data UOM ID ${id}`,
       });
@@ -179,6 +182,7 @@ export class UomController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data UOM ID ${id}`,
       });

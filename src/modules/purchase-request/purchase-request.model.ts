@@ -1,9 +1,10 @@
 import { and, asc, count, desc, eq, ilike, isNull } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
-import { purchaseRequests, purchaseRequestDetails } from "./purchase-request.schema";
+import { purchaseRequests, purchaseRequestDetails, purchaseRequestApprovals } from "./purchase-request.schema";
 import { toPurchaseRequestDTO, type PurchaseRequestDTO } from "./purchase-request.dto";
 import type { PurchaseRequestRecord } from "./purchase-request.schema";
+import { roles, userWarehouseRoles } from "../role/role.schema";
 
 function resolveOrderColumn(key: string): AnyColumn {
   const map: Record<string, AnyColumn> = {
@@ -98,6 +99,11 @@ export class PurchaseRequestModel {
         customer: true,
         warehouse: true,
         requester: true,
+        approvals: {
+          with: {
+            approver: true,
+          }
+        }
       }
     });
 
@@ -118,6 +124,11 @@ export class PurchaseRequestModel {
         warehouse: true,
         requester: true,
         approver: true,
+        approvals: {
+          with: {
+            approver: true,
+          }
+        },
         details: {
           where: isNull(purchaseRequestDetails.deletedAt),
           with: {
@@ -147,6 +158,8 @@ export class PurchaseRequestModel {
         description: payload.description,
         status: 0, // Draft
         requestedBy: userId,
+        createdBy: userId,
+        updatedBy: userId,
       }).returning();
       
       if (!pr) throw new Error("Failed to insert PR header");
@@ -157,6 +170,8 @@ export class PurchaseRequestModel {
         quantity: d.quantity,
         price: d.price.toString(),
         totalPrice: (d.quantity * d.price).toString(),
+        createdBy: userId,
+        updatedBy: userId,
       }));
 
       await tx.insert(purchaseRequestDetails).values(detailsToInsert);
@@ -177,11 +192,15 @@ export class PurchaseRequestModel {
       warehouseId?: string;
       description?: string;
       details?: { itemId: string; quantity: number; price: number }[];
-    }
+    },
+    userId?: string
   ): Promise<PurchaseRequestDTO | undefined> {
     const result = await db.transaction(async (tx) => {
       // 1. Update Header
-      const headerPayload: any = { updatedAt: new Date() };
+      const headerPayload: any = { 
+        updatedAt: new Date(),
+        updatedBy: userId,
+      };
       if (payload.customerId !== undefined) headerPayload.customerId = payload.customerId;
       if (payload.warehouseId !== undefined) headerPayload.warehouseId = payload.warehouseId;
       if (payload.description !== undefined) headerPayload.description = payload.description;
@@ -204,6 +223,8 @@ export class PurchaseRequestModel {
           quantity: d.quantity,
           price: d.price.toString(),
           totalPrice: (d.quantity * d.price).toString(),
+          createdBy: userId,
+          updatedBy: userId,
         }));
         await tx.insert(purchaseRequestDetails).values(detailsToInsert);
       }
@@ -214,19 +235,222 @@ export class PurchaseRequestModel {
     return await this.findById(result.id);
   }
 
-  static async patchStatus(id: string, status: number, userId: string): Promise<PurchaseRequestDTO | undefined> {
-    let updatePayload: any = { status, updatedAt: new Date() };
-    if (status === 2 || status === 3) { // Approved or Rejected
-      updatePayload.approvedBy = userId;
-      updatePayload.approvedAt = new Date();
-    }
-    
-    await db
-      .update(purchaseRequests)
-      .set(updatePayload)
-      .where(and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt)));
-      
-    return await this.findById(id);
+  static async patchStatus(
+    id: string,
+    payload: { status: number; remark?: string },
+    userId: string
+  ): Promise<PurchaseRequestDTO | undefined> {
+    const result = await db.transaction(async (tx) => {
+      const pr = await tx.query.purchaseRequests.findFirst({
+        where: and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt)),
+      });
+      if (!pr) throw new Error("Purchase request not found");
+
+      // Fetch user roles
+      const userRoleRecords = await tx
+        .select({
+          roleName: roles.name,
+          warehouseId: userWarehouseRoles.warehouseId,
+        })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(and(eq(userWarehouseRoles.userId, userId), isNull(userWarehouseRoles.deletedAt)));
+
+      const isSuperadmin = userRoleRecords.some(r => r.roleName === "superadmin");
+      const isManager = userRoleRecords.some(r => r.roleName === "manager");
+      const isBranchHead = userRoleRecords.some(r => r.roleName === "branch_head" && r.warehouseId === pr.warehouseId);
+      const isWarehouseHead = userRoleRecords.some(r => r.roleName === "warehouse_head" && r.warehouseId === pr.warehouseId);
+
+      const { status, remark } = payload;
+      let updatePayload: any = {
+        updatedAt: new Date(),
+        updatedBy: userId,
+      };
+
+      // 1. Transition Draft -> Pending (Submit)
+      if (pr.status === 0 && status === 1) {
+        // Determine start stage and stages to insert based on creator's role.
+        const creatorRoleRecords = await tx
+          .select({
+            roleName: roles.name,
+            warehouseId: userWarehouseRoles.warehouseId,
+          })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(and(eq(userWarehouseRoles.userId, pr.requestedBy), isNull(userWarehouseRoles.deletedAt)));
+
+        const creatorIsSuperadmin = creatorRoleRecords.some(r => r.roleName === "superadmin");
+        const creatorIsManager = creatorRoleRecords.some(r => r.roleName === "manager");
+        const creatorIsBranchHead = creatorRoleRecords.some(r => r.roleName === "branch_head" && r.warehouseId === pr.warehouseId);
+        const creatorIsWarehouseHead = creatorRoleRecords.some(r => r.roleName === "warehouse_head" && r.warehouseId === pr.warehouseId);
+
+        if (creatorIsSuperadmin || creatorIsManager) {
+          updatePayload.status = 2; // Approved
+          updatePayload.currentApprovalStage = 3;
+          updatePayload.approvedBy = pr.requestedBy;
+          updatePayload.approvedAt = new Date();
+
+          // Insert 1 row representing Manager approval
+          await tx.insert(purchaseRequestApprovals).values({
+            purchaseRequestId: id,
+            stage: 2, // Manager
+            status: 1, // Approved
+            approvedBy: pr.requestedBy,
+            approvedAt: new Date(),
+            remark: "Auto-Approved by Manager/Superadmin",
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        } else {
+          updatePayload.status = 1; // Pending
+          const stagesToInsert: number[] = [];
+
+          if (creatorIsBranchHead) {
+            updatePayload.currentApprovalStage = 2; // Waiting for Manager
+            stagesToInsert.push(2);
+          } else if (creatorIsWarehouseHead) {
+            updatePayload.currentApprovalStage = 1; // Waiting for Branch Head
+            stagesToInsert.push(1, 2);
+          } else {
+            updatePayload.currentApprovalStage = 0; // Waiting for Warehouse Head
+            stagesToInsert.push(0, 1, 2);
+          }
+
+          // Insert pending approvals
+          const approvalValues = stagesToInsert.map(stage => ({
+            purchaseRequestId: id,
+            stage,
+            status: 0, // Pending
+            createdBy: userId,
+            updatedBy: userId,
+          }));
+          await tx.insert(purchaseRequestApprovals).values(approvalValues);
+        }
+      } 
+      // 2. Approving or Rejecting when Pending (1)
+      else if (pr.status === 1) {
+        if (status === 3) {
+          // Rejecting: Must be the active stage approver or Superadmin
+          let canReject = isSuperadmin;
+          if (pr.currentApprovalStage === 0 && isWarehouseHead) canReject = true;
+          if (pr.currentApprovalStage === 1 && isBranchHead) canReject = true;
+          if (pr.currentApprovalStage === 2 && isManager) canReject = true;
+
+          if (!canReject) throw new Error("You are not authorized to reject this purchase request at the current stage");
+
+          // Update active stage approval record to Rejected (2)
+          await tx
+            .update(purchaseRequestApprovals)
+            .set({
+              status: 2, // Rejected
+              approvedBy: userId,
+              approvedAt: new Date(),
+              remark: remark || null,
+              updatedAt: new Date(),
+              updatedBy: userId,
+            })
+            .where(
+              and(
+                eq(purchaseRequestApprovals.purchaseRequestId, id),
+                eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+              )
+            );
+
+          updatePayload.status = 3; // Rejected
+          updatePayload.approvedBy = userId;
+          updatePayload.approvedAt = new Date();
+        } else if (status === 2 || status === 1) {
+          // Approving
+          // Check for Superadmin Bypass
+          if (isSuperadmin && status === 2) {
+            updatePayload.status = 2; // Approved
+            updatePayload.currentApprovalStage = 3;
+            updatePayload.approvedBy = userId;
+            updatePayload.approvedAt = new Date();
+
+            // Set all pending approval steps to Approved
+            await tx
+              .update(purchaseRequestApprovals)
+              .set({
+                status: 1, // Approved
+                approvedBy: userId,
+                approvedAt: new Date(),
+                remark: remark || "Bypassed by Superadmin",
+                updatedAt: new Date(),
+                updatedBy: userId,
+              })
+              .where(
+                and(
+                  eq(purchaseRequestApprovals.purchaseRequestId, id),
+                  eq(purchaseRequestApprovals.status, 0)
+                )
+              );
+          } else {
+            // Regular approval flow
+            if (pr.currentApprovalStage === 0) {
+              if (!isWarehouseHead) throw new Error("Only the assigned Warehouse Head can approve at this stage");
+            } else if (pr.currentApprovalStage === 1) {
+              if (!isBranchHead) throw new Error("Only the assigned Branch Head can approve at this stage");
+            } else if (pr.currentApprovalStage === 2) {
+              if (!isManager) throw new Error("Only a Manager can approve at this stage");
+            } else {
+              throw new Error("This purchase request is already approved or fully processed");
+            }
+
+            // Update the current approval step to Approved
+            await tx
+              .update(purchaseRequestApprovals)
+              .set({
+                status: 1, // Approved
+                approvedBy: userId,
+                approvedAt: new Date(),
+                remark: remark || null,
+                updatedAt: new Date(),
+                updatedBy: userId,
+              })
+              .where(
+                and(
+                  eq(purchaseRequestApprovals.purchaseRequestId, id),
+                  eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+                )
+              );
+
+            // Determine if there are more pending stages
+            const nextPending = await tx.query.purchaseRequestApprovals.findFirst({
+              where: and(
+                eq(purchaseRequestApprovals.purchaseRequestId, id),
+                eq(purchaseRequestApprovals.status, 0), // Pending
+                isNull(purchaseRequestApprovals.deletedAt)
+              ),
+              orderBy: asc(purchaseRequestApprovals.stage),
+            });
+
+            if (nextPending) {
+              updatePayload.currentApprovalStage = nextPending.stage;
+              updatePayload.status = 1; // Keep Pending
+            } else {
+              updatePayload.currentApprovalStage = 3; // Finished
+              updatePayload.status = 2; // Approved
+              updatePayload.approvedBy = userId;
+              updatePayload.approvedAt = new Date();
+            }
+          }
+        } else {
+          throw new Error("Invalid status transition for pending purchase request");
+        }
+      } else {
+        throw new Error(`Cannot change status of purchase request with current status: ${pr.status}`);
+      }
+
+      await tx
+        .update(purchaseRequests)
+        .set(updatePayload)
+        .where(eq(purchaseRequests.id, id));
+
+      return id;
+    });
+
+    return await this.findById(result);
   }
 
   static async softDelete(id: string): Promise<boolean> {

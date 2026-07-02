@@ -57,8 +57,9 @@ function buildFilterCondition(params: {
   categoryId?: string;
   uomId?: string;
   isActive?: boolean;
+  isAsset?: boolean;
 }) {
-  const { searchTerm, filterColumn, itemType, categoryId, uomId, isActive } = params;
+  const { searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset } = params;
   let conds = isNull(items.deletedAt);
   if (itemType) {
     conds = and(conds, eq(items.itemType, itemType))!;
@@ -71,6 +72,9 @@ function buildFilterCondition(params: {
   }
   if (isActive !== undefined) {
     conds = and(conds, eq(items.isActive, isActive))!;
+  }
+  if (isAsset !== undefined) {
+    conds = and(conds, eq(items.isAsset, isAsset))!;
   }
   if (searchTerm) {
     const term = searchTerm.trim();
@@ -98,10 +102,11 @@ export class ItemModel {
     categoryId?: string;
     uomId?: string;
     isActive?: boolean;
+    isAsset?: boolean;
   }): Promise<ItemDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ searchTerm, filterColumn, itemType, categoryId, uomId, isActive });
+    const whereClause = buildFilterCondition({ searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset });
     const offset = (page - 1) * limit;
 
     const result = await db
@@ -134,6 +139,7 @@ export class ItemModel {
     categoryId?: string;
     uomId?: string;
     isActive?: boolean;
+    isAsset?: boolean;
   }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(items).where(whereClause);
@@ -190,7 +196,7 @@ export class ItemModel {
     return result[0];
   }
 
-  static async create(payload: CreateItemInput): Promise<ItemDTO> {
+  static async create(payload: CreateItemInput, userId?: string): Promise<ItemDTO> {
     return await db.transaction(async (tx) => {
       const { discountPrice, priceAfterDiscount } = calcDiscount(payload.sellingPrice, payload.discountPercentage ?? 0);
       const [insertedItem] = await tx
@@ -210,7 +216,10 @@ export class ItemModel {
           discountPercentage: String(payload.discountPercentage ?? 0),
           discountPrice: String(discountPrice),
           priceAfterDiscount: String(priceAfterDiscount),
+          isAsset: payload.isAsset ?? false,
           isActive: payload.isActive ?? true,
+          createdBy: userId,
+          updatedBy: userId,
         })
         .returning();
 
@@ -244,6 +253,8 @@ export class ItemModel {
               discountPrice: String(dDiscPrice),
               priceAfterDiscount: String(dPriceAfter),
               isActive: true,
+              createdBy: userId,
+              updatedBy: userId,
             })
             .returning();
           if (insertedDetail) detailRecords.push(insertedDetail);
@@ -271,7 +282,7 @@ export class ItemModel {
     });
   }
 
-  static async update(id: string, payload: UpdateItemInput): Promise<ItemDTO | undefined> {
+  static async update(id: string, payload: UpdateItemInput, userId?: string): Promise<ItemDTO | undefined> {
     return await db.transaction(async (tx) => {
       const existing = await tx
         .select()
@@ -283,17 +294,19 @@ export class ItemModel {
 
       const updateData: any = {
         updatedAt: new Date(),
+        updatedBy: userId,
       };
 
       if (payload.code !== undefined) updateData.code = payload.code;
       if (payload.name !== undefined) updateData.name = payload.name;
-      if (payload.description !== undefined) updateData.description = payload.description;
+      if (payload.description !== undefined) updateData.description = payload.description || null;
       if (payload.uomId !== undefined) updateData.uomId = payload.uomId;
       if (payload.categoryId !== undefined) updateData.categoryId = payload.categoryId;
-      if (payload.barcodeText !== undefined) updateData.barcodeText = payload.barcodeText;
-      if (payload.barcodeType !== undefined) updateData.barcodeType = payload.barcodeType;
-      if (payload.imageUrl !== undefined) updateData.imageUrl = payload.imageUrl;
+      if (payload.barcodeText !== undefined) updateData.barcodeText = payload.barcodeText || null;
+      if (payload.barcodeType !== undefined) updateData.barcodeType = payload.barcodeType || null;
+      if (payload.imageUrl !== undefined) updateData.imageUrl = payload.imageUrl || null;
       if (payload.itemType !== undefined) updateData.itemType = payload.itemType;
+      if (payload.isAsset !== undefined) updateData.isAsset = payload.isAsset;
       if (payload.isActive !== undefined) updateData.isActive = payload.isActive;
 
       const sellingPrice = payload.sellingPrice !== undefined ? payload.sellingPrice : Number(current?.sellingPrice);
@@ -358,6 +371,8 @@ export class ItemModel {
               discountPrice: String(dDiscPrice),
               priceAfterDiscount: String(dPriceAfter),
               isActive: true,
+              createdBy: userId,
+              updatedBy: userId,
             })
             .returning();
           if (insertedDetail) detailRecords.push(insertedDetail);

@@ -56,7 +56,7 @@ export class PlatformController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const platform = await PlatformModel.findById(id);
+      const platform = await PlatformModel.findById(id ?? "");
       if (!platform) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found", 404);
@@ -84,7 +84,7 @@ export class PlatformController {
         return failedResponse(correlationId, "Platform code already exists", 409);
       }
 
-      const newPlatform = await PlatformModel.create(parsed.data as CreatePlatformInput);
+      const newPlatform = await PlatformModel.create(parsed.data as CreatePlatformInput, ctx.user?.sub);
       
       await logActivity({
         userId: ctx.user?.sub,
@@ -120,7 +120,7 @@ export class PlatformController {
         }
       }
 
-      const updated = await PlatformModel.update(id, parsed.data as UpdatePlatformInput);
+      const updated = await PlatformModel.update(id ?? "", parsed.data as UpdatePlatformInput, ctx.user?.sub);
       if (!updated) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found", 404);
@@ -145,7 +145,7 @@ export class PlatformController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const deleted = await PlatformModel.softDelete(id);
+      const deleted = await PlatformModel.softDelete(id ?? "");
       if (!deleted) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found or already deleted", 404);

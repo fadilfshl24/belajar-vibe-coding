@@ -151,13 +151,16 @@ export class UserModel {
     return result.map(row => toUserDTO(row.user, row.role?.id ? row.role : null));
   }
 
-  static async createUser(payload: {
-    name: string;
-    email: string;
-    password?: string;
-    roleId?: string;
-    isActive?: boolean;
-  }): Promise<UserRecord> {
+  static async createUser(
+    payload: {
+      name: string;
+      email: string;
+      password?: string;
+      roleId?: string;
+      isActive?: boolean;
+    },
+    userId?: string
+  ): Promise<UserRecord> {
     return await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(users)
@@ -166,6 +169,8 @@ export class UserModel {
           email: payload.email.toLowerCase().trim(),
           password: payload.password || null,
           status: payload.isActive ?? true ? 1 : 0,
+          createdBy: userId,
+          updatedBy: userId,
         })
         .returning();
 
@@ -180,6 +185,8 @@ export class UserModel {
           userId: inserted.id,
           warehouseId,
           roleId: payload.roleId,
+          createdBy: userId,
+          updatedBy: userId,
         });
       }
 
@@ -195,7 +202,8 @@ export class UserModel {
       password?: string;
       roleId?: string | null;
       isActive?: boolean;
-    }
+    },
+    userId?: string
   ): Promise<UserDTO | undefined> {
     return await db.transaction(async (tx) => {
       const existing = await tx
@@ -207,6 +215,7 @@ export class UserModel {
 
       const updateData: any = {
         updatedAt: new Date(),
+        updatedBy: userId,
       };
       if (payload.name !== undefined) updateData.name = payload.name.trim();
       if (payload.email !== undefined) updateData.email = payload.email.toLowerCase().trim();
@@ -233,6 +242,8 @@ export class UserModel {
             userId: id,
             warehouseId,
             roleId: payload.roleId,
+            createdBy: userId,
+            updatedBy: userId,
           });
         }
       }
@@ -256,10 +267,14 @@ export class UserModel {
     });
   }
 
-  static async updateStatus(id: string, status: number): Promise<UserDTO | undefined> {
+  static async updateStatus(id: string, status: number, userId?: string): Promise<UserDTO | undefined> {
     const result = await db
       .update(users)
-      .set({ status: status as 0 | 1, updatedAt: new Date() })
+      .set({ 
+        status: status as 0 | 1, 
+        updatedAt: new Date(),
+        updatedBy: userId
+      })
       .where(and(eq(users.id, id), isNull(users.deletedAt)))
       .returning();
 

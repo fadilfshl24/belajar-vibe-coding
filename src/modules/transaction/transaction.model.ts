@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { transactions, transactionItems, transactionApprovals, type TransactionInsert, type TransactionItemInsert, type TransactionApprovalInsert } from "./transaction.schema";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, sql, desc, or, ilike } from "drizzle-orm";
+import { eq, and, sql, desc, or, ilike, isNull } from "drizzle-orm";
 import { warehouses } from "../warehouse/warehouse.schema";
 import { users } from "../user/user.schema";
 
@@ -17,7 +17,7 @@ interface FindAllOptions {
 export class TransactionModel {
   static async findAll(opts: FindAllOptions) {
     const offset = (opts.page - 1) * opts.limit;
-    const conditions = [eq(transactions.deletedAt, null)];
+    const conditions = [isNull(transactions.deletedAt)];
 
     if (opts.warehouseId) {
       conditions.push(eq(transactions.warehouseId, opts.warehouseId));
@@ -33,7 +33,7 @@ export class TransactionModel {
         or(
           ilike(transactions.referenceNumber, `%${opts.searchTerm}%`),
           ilike(transactions.description, `%${opts.searchTerm}%`)
-        )
+        )!
       );
     }
 
@@ -64,7 +64,7 @@ export class TransactionModel {
   }
 
   static async countAll(opts: Omit<FindAllOptions, "page" | "limit">) {
-    const conditions = [eq(transactions.deletedAt, null)];
+    const conditions = [isNull(transactions.deletedAt)];
 
     if (opts.warehouseId) {
       conditions.push(eq(transactions.warehouseId, opts.warehouseId));
@@ -80,7 +80,7 @@ export class TransactionModel {
         or(
           ilike(transactions.referenceNumber, `%${opts.searchTerm}%`),
           ilike(transactions.description, `%${opts.searchTerm}%`)
-        )
+        )!
       );
     }
 
@@ -98,7 +98,7 @@ export class TransactionModel {
     const [tx] = await db
       .select()
       .from(transactions)
-      .where(and(eq(transactions.id, id), eq(transactions.deletedAt, null)))
+      .where(and(eq(transactions.id, id), isNull(transactions.deletedAt)))
       .limit(1);
     
     if (!tx) return null;
@@ -106,19 +106,27 @@ export class TransactionModel {
     const items = await db
       .select()
       .from(transactionItems)
-      .where(and(eq(transactionItems.transactionId, id), eq(transactionItems.deletedAt, null)));
+      .where(and(eq(transactionItems.transactionId, id), isNull(transactionItems.deletedAt)));
 
     return { ...tx, items };
   }
 
-  static async create(txData: TransactionInsert, itemsData: Omit<TransactionItemInsert, "transactionId">[]) {
+  static async create(txData: TransactionInsert, itemsData: Omit<TransactionItemInsert, "transactionId">[], userId?: string) {
     return await db.transaction(async (tx) => {
-      const [insertedTx] = await tx.insert(transactions).values(txData).returning();
+      const [insertedTx] = await tx.insert(transactions).values({
+        ...txData,
+        createdBy: userId || txData.createdBy,
+        updatedBy: userId || txData.updatedBy || txData.createdBy,
+      }).returning();
       
+      if (!insertedTx) throw new Error("Failed to insert transaction");
+
       if (itemsData.length > 0) {
         const itemsToInsert = itemsData.map(item => ({
           ...item,
-          transactionId: insertedTx.id
+          transactionId: insertedTx.id,
+          createdBy: userId || txData.createdBy,
+          updatedBy: userId || txData.createdBy,
         }));
         await tx.insert(transactionItems).values(itemsToInsert);
       }
@@ -127,19 +135,23 @@ export class TransactionModel {
     });
   }
 
-  static async updateStatus(id: string, status: TransactionInsert["status"]) {
+  static async updateStatus(id: string, status: TransactionInsert["status"], userId?: string) {
     const [updated] = await db
       .update(transactions)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: new Date(), updatedBy: userId })
       .where(eq(transactions.id, id))
       .returning();
     return updated;
   }
 
-  static async requestCancel(data: TransactionApprovalInsert) {
+  static async requestCancel(data: TransactionApprovalInsert, userId?: string) {
     return await db.transaction(async (tx) => {
-      const [approval] = await tx.insert(transactionApprovals).values(data).returning();
-      await tx.update(transactions).set({ status: "CANCEL_PENDING", updatedAt: new Date() }).where(eq(transactions.id, data.transactionId));
+      const [approval] = await tx.insert(transactionApprovals).values({
+        ...data,
+        createdBy: userId || data.requestedBy,
+        updatedBy: userId || data.requestedBy,
+      }).returning();
+      await tx.update(transactions).set({ status: "CANCEL_PENDING", updatedAt: new Date(), updatedBy: userId || data.requestedBy }).where(eq(transactions.id, data.transactionId));
       return approval;
     });
   }
@@ -148,16 +160,18 @@ export class TransactionModel {
     return await db.transaction(async (tx) => {
       const [approval] = await tx
         .update(transactionApprovals)
-        .set({ status, approvedBy, responseRemark, updatedAt: new Date() })
+        .set({ status, approvedBy, responseRemark, updatedAt: new Date(), updatedBy: approvedBy })
         .where(eq(transactionApprovals.id, approvalId))
         .returning();
 
+      if (!approval) throw new Error("Approval record not found");
+
       if (status === "APPROVED") {
-        await tx.update(transactions).set({ status: "CANCELLED", updatedAt: new Date() }).where(eq(transactions.id, approval.transactionId));
+        await tx.update(transactions).set({ status: "CANCELLED", updatedAt: new Date(), updatedBy: approvedBy }).where(eq(transactions.id, approval.transactionId));
       } else {
         // If rejected, usually revert status back to COMPLETED or DRAFT based on previous state. 
         // For simplicity, we assume it reverts to COMPLETED since it was requested from COMPLETED.
-        await tx.update(transactions).set({ status: "COMPLETED", updatedAt: new Date() }).where(eq(transactions.id, approval.transactionId));
+        await tx.update(transactions).set({ status: "COMPLETED", updatedAt: new Date(), updatedBy: approvedBy }).where(eq(transactions.id, approval.transactionId));
       }
 
       return approval;

@@ -102,10 +102,15 @@ export class VendorModel {
     return result[0];
   }
 
-  static async create(payload: Omit<VendorInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">): Promise<VendorRecord> {
+  static async create(
+    payload: Omit<VendorInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">,
+    userId?: string
+  ): Promise<VendorRecord> {
     const result = await db.insert(vendors).values({
       ...payload,
       code: payload.code.toUpperCase(),
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
     if (!result[0]) throw new Error("Failed to create vendor");
     return result[0];
@@ -113,14 +118,16 @@ export class VendorModel {
 
   static async update(
     id: string,
-    payload: Partial<Omit<VendorInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>
+    payload: Partial<Omit<VendorInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>,
+    userId?: string
   ): Promise<VendorDTO | undefined> {
     const result = await db
       .update(vendors)
       .set({ 
         ...payload, 
         ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
-        updatedAt: new Date() 
+        updatedAt: new Date(),
+        updatedBy: userId
       })
       .where(and(eq(vendors.id, id), isNull(vendors.deletedAt)))
       .returning();

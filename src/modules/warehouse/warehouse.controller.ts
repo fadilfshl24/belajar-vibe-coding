@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = "WAREHOUSE"
 
 export class WarehouseController {
   static async getAll(ctx: Context) {
@@ -99,10 +100,11 @@ export class WarehouseController {
         return failedResponse(correlationId, "Create data failed!", 400, "Warehouse code already exists");
       }
 
-      const warehouse = await WarehouseModel.create(parsed.data);
+      const warehouse = await WarehouseModel.create(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Warehouse "${warehouse.name}" dengan ID ${warehouse.id}`,
       });
@@ -144,10 +146,11 @@ export class WarehouseController {
         }
       }
 
-      const updated = await WarehouseModel.update(id, parsed.data);
+      const updated = await WarehouseModel.update(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Warehouse ID ${id}`,
       });
@@ -179,6 +182,7 @@ export class WarehouseController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Warehouse ID ${id}`,
       });
@@ -233,6 +237,7 @@ export class WarehouseHeadController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menugaskan user ID ${parsed.data.userId} sebagai kepala gudang ID ${warehouseId}`,
       });
@@ -258,6 +263,7 @@ export class WarehouseHeadController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} melepas tugas kepala gudang ID ${headId}`,
       });

@@ -79,7 +79,8 @@ export class TransactionController {
           transactionDate: txData.transactionDate ? new Date(txData.transactionDate) : new Date(),
           createdBy: ctx.user!.sub,
         },
-        items.map(i => ({ itemId: i.itemId, quantity: i.quantity.toString() }))
+        items.map(i => ({ itemId: i.itemId, quantity: i.quantity.toString() })),
+        ctx.user?.sub
       );
 
       await logActivity({
@@ -100,7 +101,7 @@ export class TransactionController {
     try {
       const id = (ctx.params as Record<string, string>).id ?? "";
       
-      await TransactionService.completeTransaction(id);
+      await TransactionService.completeTransaction(id, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
@@ -137,7 +138,7 @@ export class TransactionController {
 
       // if DRAFT, just cancel directly
       if (txData.status === "DRAFT") {
-        await TransactionModel.updateStatus(id, "CANCELLED");
+        await TransactionModel.updateStatus(id, "CANCELLED", ctx.user?.sub);
         return successResponse(correlationId, "Transaction cancelled", null);
       }
 
@@ -145,7 +146,7 @@ export class TransactionController {
         transactionId: id,
         remark: parsed.data.remark,
         requestedBy: ctx.user!.sub,
-      });
+      }, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,

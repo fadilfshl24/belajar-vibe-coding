@@ -22,6 +22,7 @@ export const updatePurchaseRequestSchema = createPurchaseRequestSchema.partial()
 
 export const patchPRStatusSchema = z.object({
   status: z.number().int().min(0).max(4),
+  remark: z.string().optional(),
 });
 
 export const prListQuerySchema = z.object({

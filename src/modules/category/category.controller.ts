@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = 'CATEGORY'
 
 export class CategoryController {
   static async getAll(ctx: Context) {
@@ -99,10 +100,11 @@ export class CategoryController {
         return failedResponse(correlationId, "Create data failed!", 400, "Category code already exists");
       }
 
-      const category = await CategoryModel.create(parsed.data);
+      const category = await CategoryModel.create(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Category "${category.name}" dengan ID ${category.id}`,
       });
@@ -144,10 +146,11 @@ export class CategoryController {
         }
       }
 
-      const updated = await CategoryModel.update(id, parsed.data);
+      const updated = await CategoryModel.update(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Category ID ${id}`,
       });
@@ -179,6 +182,7 @@ export class CategoryController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Category ID ${id}`,
       });

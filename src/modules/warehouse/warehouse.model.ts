@@ -105,7 +105,7 @@ export class WarehouseModel {
     return result[0]?.total ?? 0;
   }
 
-  static async findById(id: string): Promise<WarehouseRecord | undefined> {
+  static async findById(id: string): Promise<WarehouseDTO | undefined> {
     const result = await db
       .select({
         warehouse: warehouses,
@@ -131,7 +131,7 @@ export class WarehouseModel {
     return dto;
   }
 
-  static async findByCode(code: string): Promise<WarehouseRecord | undefined> {
+  static async findByCode(code: string): Promise<WarehouseDTO | undefined> {
     const result = await db
       .select({
         warehouse: warehouses,
@@ -157,7 +157,7 @@ export class WarehouseModel {
     return dto;
   }
 
-  static async create(payload: CreateWarehouseInput): Promise<WarehouseRecord> {
+  static async create(payload: CreateWarehouseInput, userId?: string): Promise<WarehouseRecord> {
     const result = await db.insert(warehouses).values({
       code: payload.code.toUpperCase(),
       name: payload.name,
@@ -171,15 +171,18 @@ export class WarehouseModel {
       latitude: payload.latitude !== undefined ? String(payload.latitude) : null,
       longitude: payload.longitude !== undefined ? String(payload.longitude) : null,
       isActive: payload.isActive ?? true,
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
 
     if (!result[0]) throw new Error("Failed to create warehouse");
     return result[0];
   }
 
-  static async update(id: string, payload: UpdateWarehouseInput): Promise<WarehouseDTO | undefined> {
+  static async update(id: string, payload: UpdateWarehouseInput, userId?: string): Promise<WarehouseDTO | undefined> {
     const updateData: any = {
       updatedAt: new Date(),
+      updatedBy: userId,
     };
     if (payload.code !== undefined) updateData.code = payload.code.toUpperCase();
     if (payload.name !== undefined) updateData.name = payload.name;

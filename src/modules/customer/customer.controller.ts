@@ -11,6 +11,8 @@ import { failedResponse, successResponse, type PaginationMeta } from "../../core
 import type { JwtPayload } from "../../core/types/JwtPayload";
 import { logActivity } from "../../core/utils/activityLogger";
 
+const MODULE_TYPE = 'CUSTOMER'
+
 export class CustomerController {
   static async getAll(ctx: Context) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
@@ -56,7 +58,7 @@ export class CustomerController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const customer = await CustomerModel.findById(id);
+      const customer = await CustomerModel.findById(id ?? "");
       if (!customer) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Customer not found", 404);
@@ -84,12 +86,12 @@ export class CustomerController {
         return failedResponse(correlationId, "Customer code already exists", 409);
       }
 
-      const newCustomer = await CustomerModel.create(parsed.data as CreateCustomerInput);
+      const newCustomer = await CustomerModel.create(parsed.data as CreateCustomerInput, ctx.user?.sub);
       
       await logActivity({
         userId: ctx.user?.sub,
         action: "CREATE_DATA",
-        module: "CUSTOMER",
+        module: MODULE_TYPE,
         description: `User ${ctx.user?.email} menambahkan data Customer "${newCustomer.name}" dengan ID ${newCustomer.id}`,
       });
       
@@ -120,7 +122,7 @@ export class CustomerController {
         }
       }
 
-      const updated = await CustomerModel.update(id, parsed.data as UpdateCustomerInput);
+      const updated = await CustomerModel.update(id ?? "", parsed.data as UpdateCustomerInput, ctx.user?.sub);
       if (!updated) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Customer not found", 404);
@@ -129,7 +131,7 @@ export class CustomerController {
       await logActivity({
         userId: ctx.user?.sub,
         action: "UPDATE_DATA",
-        module: "CUSTOMER",
+        module: MODULE_TYPE,
         description: `User ${ctx.user?.email} memperbarui data Customer "${updated.name}" dengan ID ${updated.id}`,
       });
 
@@ -145,7 +147,7 @@ export class CustomerController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const deleted = await CustomerModel.softDelete(id);
+      const deleted = await CustomerModel.softDelete(id ?? "");
       if (!deleted) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Customer not found or already deleted", 404);
@@ -153,8 +155,8 @@ export class CustomerController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
-        module: "CUSTOMER",
         description: `User ${ctx.user?.email} menghapus data Customer dengan ID ${id}`,
       });
 

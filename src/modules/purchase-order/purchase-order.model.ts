@@ -127,18 +127,21 @@ export class PurchaseOrderModel {
     return result ? toPurchaseOrderDTO(result) : undefined;
   }
 
-  static async create(payload: {
-    purchaseRequestId?: string | null;
-    vendorId: string;
-    warehouseId: string;
-    orderDate: string;
-    expectedDeliveryDate?: string;
-    tax: number;
-    discount: number;
-    shippingFee: number;
-    description?: string;
-    details: { itemId: string; quantity: number; price: number }[];
-  }): Promise<PurchaseOrderDTO | undefined> {
+  static async create(
+    payload: {
+      purchaseRequestId?: string | null;
+      vendorId: string;
+      warehouseId: string;
+      orderDate: string;
+      expectedDeliveryDate?: string;
+      tax: number;
+      discount: number;
+      shippingFee: number;
+      description?: string;
+      details: { itemId: string; quantity: number; price: number }[];
+    },
+    userId?: string
+  ): Promise<PurchaseOrderDTO | undefined> {
     const result = await db.transaction(async (tx) => {
       const code = await generatePOCode();
       
@@ -159,6 +162,8 @@ export class PurchaseOrderModel {
         discount: payload.discount.toString(),
         shippingFee: payload.shippingFee.toString(),
         grandTotal: grandTotal.toString(),
+        createdBy: userId,
+        updatedBy: userId,
       }).returning();
       
       if (!po) throw new Error("Failed to insert PO header");
@@ -170,6 +175,8 @@ export class PurchaseOrderModel {
         receivedQuantity: 0,
         price: d.price.toString(),
         totalPrice: (d.quantity * d.price).toString(),
+        createdBy: userId,
+        updatedBy: userId,
       }));
 
       await tx.insert(purchaseOrderDetails).values(detailsToInsert);
@@ -196,7 +203,8 @@ export class PurchaseOrderModel {
       shippingFee?: number;
       description?: string;
       details?: { itemId: string; quantity: number; price: number }[];
-    }
+    },
+    userId?: string
   ): Promise<PurchaseOrderDTO | undefined> {
     const result = await db.transaction(async (tx) => {
       // Get existing PO for current values if we need to calculate grand total
@@ -204,7 +212,10 @@ export class PurchaseOrderModel {
       if (!existingPo) throw new Error("PO not found");
 
       // 1. Update Header
-      const headerPayload: any = { updatedAt: new Date() };
+      const headerPayload: any = { 
+        updatedAt: new Date(),
+        updatedBy: userId,
+      };
       if (payload.purchaseRequestId !== undefined) headerPayload.purchaseRequestId = payload.purchaseRequestId;
       if (payload.vendorId !== undefined) headerPayload.vendorId = payload.vendorId;
       if (payload.warehouseId !== undefined) headerPayload.warehouseId = payload.warehouseId;
@@ -250,6 +261,8 @@ export class PurchaseOrderModel {
           receivedQuantity: 0,
           price: d.price.toString(),
           totalPrice: (d.quantity * d.price).toString(),
+          createdBy: userId,
+          updatedBy: userId,
         }));
         await tx.insert(purchaseOrderDetails).values(detailsToInsert);
       }

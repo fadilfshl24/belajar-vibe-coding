@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = "MENU"
 
 export class MenuController {
   static async getAll(ctx: Context) {
@@ -72,10 +73,11 @@ export class MenuController {
       const existing = await MenuModel.findByCode(parsed.data.code);
       if (existing) return failedResponse(correlationId, "Create data failed!", 400, "Menu code already exists");
 
-      const menu = await MenuModel.createMenu(parsed.data);
+      const menu = await MenuModel.createMenu(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Menu "${menu.name}" dengan ID ${menu.id}`,
       });
@@ -99,10 +101,11 @@ export class MenuController {
       const existing = await MenuModel.findById(id);
       if (!existing) return failedResponse(correlationId, "Data not found!", 400);
 
-      const updated = await MenuModel.updateMenu(id, parsed.data);
+      const updated = await MenuModel.updateMenu(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Menu ID ${id}`,
       });
@@ -127,6 +130,7 @@ export class MenuController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Menu ID ${id}`,
       });

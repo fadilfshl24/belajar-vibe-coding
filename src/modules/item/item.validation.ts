@@ -20,6 +20,7 @@ export const createItemSchema = z
     itemType: z.enum(["single", "package"]).default("single"),
     purchasePrice: z.number().min(0, "Purchase price cannot be negative").default(0),
     sellingPrice: z.number().min(0, "Selling price cannot be negative").default(0),
+    isAsset: z.boolean().optional().default(false),
     isActive: z.boolean().optional().default(true),
     discountPercentage: z.number().min(0).max(100).optional().default(0),
     details: z.array(packageDetailSchema).optional(),
@@ -49,6 +50,7 @@ export const updateItemSchema = z
     itemType: z.enum(["single", "package"]).optional(),
     purchasePrice: z.number().min(0).optional(),
     sellingPrice: z.number().min(0).optional(),
+    isAsset: z.boolean().optional(),
     isActive: z.boolean().optional(),
     discountPercentage: z.number().min(0).max(100).optional(),
     details: z.array(packageDetailSchema).optional(),
@@ -75,6 +77,7 @@ export const itemListQuerySchema = z.object({
   categoryId: z.string().uuid().optional(),
   uomId: z.string().uuid().optional(),
   isActive: z.string().optional().transform(val => val === "true" ? true : val === "false" ? false : undefined),
+  isAsset: z.string().optional().transform(val => val === "true" ? true : val === "false" ? false : undefined),
 });
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;

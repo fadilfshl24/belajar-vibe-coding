@@ -12,6 +12,8 @@ export const ROLES = [
   { name: "superadmin", description: "Administrator tertinggi dengan akses penuh ke seluruh sistem" },
   { name: "admin", description: "Administrator yang dapat mengelola user, master data, dan konfigurasi" },
   { name: "warehouse_head", description: "Kepala gudang yang mengelola operasional dan inventaris gudang" },
+  { name: "branch_head", description: "Kepala cabang yang menyetujui operasional tingkat cabang" },
+  { name: "manager", description: "Manager pusat yang memvalidasi persetujuan tingkat tertinggi" },
   { name: "staff", description: "Staff operasional yang memproses order keluar-masuk" },
   { name: "user", description: "Pengguna biasa dengan akses terbatas" },
 ] as const;

@@ -89,13 +89,21 @@ export class RoleModel {
     return result[0];
   }
 
-  static async createRole(payload: {
-    name: string;
-    description?: string;
-  }): Promise<RoleRecord> {
+  static async createRole(
+    payload: {
+      name: string;
+      description?: string;
+    },
+    userId?: string
+  ): Promise<RoleRecord> {
     const result = await db
       .insert(roles)
-      .values({ name: payload.name, description: payload.description })
+      .values({ 
+        name: payload.name, 
+        description: payload.description,
+        createdBy: userId,
+        updatedBy: userId,
+      })
       .returning();
 
     if (!result[0]) throw new Error("Failed to create role");
@@ -104,11 +112,16 @@ export class RoleModel {
 
   static async updateRole(
     id: string,
-    payload: { name?: string; description?: string }
+    payload: { name?: string; description?: string },
+    userId?: string
   ): Promise<RoleDTO | undefined> {
     const result = await db
       .update(roles)
-      .set({ ...payload, updatedAt: new Date() })
+      .set({ 
+        ...payload, 
+        updatedAt: new Date(),
+        updatedBy: userId
+      })
       .where(and(eq(roles.id, id), isNull(roles.deletedAt)))
       .returning();
 

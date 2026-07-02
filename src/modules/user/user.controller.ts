@@ -5,6 +5,7 @@ import { parseCreateUserInput, parseUpdateUserInput, parseListQuery } from "./us
 import { UserModel } from "./user.model";
 import { toUserDTO } from "./user.dto";
 import { logActivity } from "../../core/utils/activityLogger";
+import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const BCRYPT_SALT_ROUNDS = 10;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,7 +15,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // POST /api/users — Register user baru
   // ---------------------------------------------------------------------------
-  static async register(ctx: Context) {
+  static async register(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -43,7 +44,7 @@ export class UserController {
         password: hashedPassword,
         roleId,
         isActive,
-      });
+      }, ctx.user?.sub);
 
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
@@ -69,7 +70,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // PUT /api/users/:id — Update user
   // ---------------------------------------------------------------------------
-  static async updateUser(ctx: Context) {
+  static async updateUser(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -113,7 +114,7 @@ export class UserController {
         updatePayload.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
       }
 
-      const updatedUser = await UserModel.update(id, updatePayload);
+      const updatedUser = await UserModel.update(id, updatePayload, ctx.user?.sub);
       if (!updatedUser) {
         return failedResponse(correlationId, "Update data failed!", 500, "Failed to update user database record");
       }
@@ -232,7 +233,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // PATCH /api/users/:id/status — Update status user
   // ---------------------------------------------------------------------------
-  static async updateStatus(ctx: Context) {
+  static async updateStatus(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -251,7 +252,7 @@ export class UserController {
       const existingUser = await UserModel.findById(id);
       if (!existingUser) return failedResponse(correlationId, "Data not found!", 400);
 
-      await UserModel.updateStatus(id, status as 0 | 1);
+      await UserModel.updateStatus(id, status as 0 | 1, ctx.user?.sub);
       return successResponse(correlationId, "Data has been updated", null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";

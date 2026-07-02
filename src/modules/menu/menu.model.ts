@@ -89,16 +89,23 @@ export class MenuModel {
     return result[0];
   }
 
-  static async createMenu(payload: {
-    parentId?: string | null;
-    name: string;
-    code: string;
-    path: string;
-    sortOrder: number;
-    icon?: string | null;
-    isActive?: boolean;
-  }): Promise<MenuRecord> {
-    const result = await db.insert(menus).values(payload).returning();
+  static async createMenu(
+    payload: {
+      parentId?: string | null;
+      name: string;
+      code: string;
+      path: string;
+      sortOrder: number;
+      icon?: string | null;
+      isActive?: boolean;
+    },
+    userId?: string
+  ): Promise<MenuRecord> {
+    const result = await db.insert(menus).values({
+      ...payload,
+      createdBy: userId,
+      updatedBy: userId,
+    }).returning();
     if (!result[0]) throw new Error("Failed to create menu");
     return result[0];
   }
@@ -113,11 +120,16 @@ export class MenuModel {
       sortOrder?: number;
       icon?: string | null;
       isActive?: boolean;
-    }
+    },
+    userId?: string
   ): Promise<MenuDTO | undefined> {
     const result = await db
       .update(menus)
-      .set({ ...payload, updatedAt: new Date() })
+      .set({ 
+        ...payload, 
+        updatedAt: new Date(),
+        updatedBy: userId
+      })
       .where(and(eq(menus.id, id), isNull(menus.deletedAt)))
       .returning();
     return result[0] ? toMenuDTO(result[0]) : undefined;

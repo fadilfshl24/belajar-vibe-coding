@@ -19,6 +19,7 @@ export const purchaseRequests = pgTable(
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at"),
+    currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER, 3=APPROVED
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
   },
@@ -49,6 +50,27 @@ export const purchaseRequestDetails = pgTable(
   ]
 );
 
+export const purchaseRequestApprovals = pgTable(
+  "purchase_request_approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseRequestId: uuid("purchase_request_id").notNull().references(() => purchaseRequests.id, { onDelete: "cascade" }),
+    stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER
+    status: integer("status").notNull().default(0), // 0=Pending/Waiting, 1=Approved, 2=Rejected
+    approvedBy: uuid("approved_by").references(() => users.id),
+    approvedAt: timestamp("approved_at"),
+    remark: text("remark"),
+    isActive: boolean("is_active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    index("idx_pr_approvals_pr_id").on(t.purchaseRequestId),
+    index("idx_pr_approvals_approved_by").on(t.approvedBy),
+    index("idx_pr_approvals_pr_id_stage").on(t.purchaseRequestId, t.stage),
+    index("idx_pr_approvals_deleted_at").on(t.deletedAt),
+  ]
+);
+
 export const purchaseRequestsRelations = relations(purchaseRequests, ({ one, many }) => ({
   customer: one(customers, {
     fields: [purchaseRequests.customerId],
@@ -67,6 +89,7 @@ export const purchaseRequestsRelations = relations(purchaseRequests, ({ one, man
     references: [users.id],
   }),
   details: many(purchaseRequestDetails),
+  approvals: many(purchaseRequestApprovals),
 }));
 
 export const purchaseRequestDetailsRelations = relations(purchaseRequestDetails, ({ one }) => ({
@@ -80,7 +103,20 @@ export const purchaseRequestDetailsRelations = relations(purchaseRequestDetails,
   }),
 }));
 
+export const purchaseRequestApprovalsRelations = relations(purchaseRequestApprovals, ({ one }) => ({
+  purchaseRequest: one(purchaseRequests, {
+    fields: [purchaseRequestApprovals.purchaseRequestId],
+    references: [purchaseRequests.id],
+  }),
+  approver: one(users, {
+    fields: [purchaseRequestApprovals.approvedBy],
+    references: [users.id],
+  }),
+}));
+
 export type PurchaseRequestRecord = typeof purchaseRequests.$inferSelect;
 export type PurchaseRequestInsert = typeof purchaseRequests.$inferInsert;
 export type PurchaseRequestDetailRecord = typeof purchaseRequestDetails.$inferSelect;
 export type PurchaseRequestDetailInsert = typeof purchaseRequestDetails.$inferInsert;
+export type PurchaseRequestApprovalRecord = typeof purchaseRequestApprovals.$inferSelect;
+export type PurchaseRequestApprovalInsert = typeof purchaseRequestApprovals.$inferInsert;

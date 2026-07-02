@@ -100,10 +100,15 @@ export class PlatformModel {
     return result[0];
   }
 
-  static async create(payload: Omit<PlatformInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">): Promise<PlatformRecord> {
+  static async create(
+    payload: Omit<PlatformInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">,
+    userId?: string
+  ): Promise<PlatformRecord> {
     const result = await db.insert(platforms).values({
       ...payload,
       code: payload.code.toUpperCase(),
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
     if (!result[0]) throw new Error("Failed to create platform");
     return result[0];
@@ -111,14 +116,16 @@ export class PlatformModel {
 
   static async update(
     id: string,
-    payload: Partial<Omit<PlatformInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>
+    payload: Partial<Omit<PlatformInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>,
+    userId?: string
   ): Promise<PlatformDTO | undefined> {
     const result = await db
       .update(platforms)
       .set({ 
         ...payload, 
         ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
-        updatedAt: new Date() 
+        updatedAt: new Date(),
+        updatedBy: userId
       })
       .where(and(eq(platforms.id, id), isNull(platforms.deletedAt)))
       .returning();

@@ -56,7 +56,7 @@ export class PurchaseRequestController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const pr = await PurchaseRequestModel.findById(id);
       if (!pr) {
         ctx.set.status = 404;
@@ -86,6 +86,10 @@ export class PurchaseRequestController {
       }
 
       const newPR = await PurchaseRequestModel.create(parsed.data as CreatePRInput, userId);
+      if (!newPR) {
+        ctx.set.status = 500;
+        return failedResponse(correlationId, "Failed to create purchase request", 500);
+      }
 
       await logActivity({
         userId: ctx.user?.sub,
@@ -106,7 +110,7 @@ export class PurchaseRequestController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const pr = await PurchaseRequestModel.findById(id);
       if (!pr) {
         ctx.set.status = 404;
@@ -123,7 +127,11 @@ export class PurchaseRequestController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const updated = await PurchaseRequestModel.update(id, parsed.data as UpdatePRInput);
+      const updated = await PurchaseRequestModel.update(id, parsed.data as UpdatePRInput, ctx.user?.sub);
+      if (!updated) {
+        ctx.set.status = 500;
+        return failedResponse(correlationId, "Failed to update purchase request", 500);
+      }
 
       await logActivity({
         userId: ctx.user?.sub,
@@ -143,7 +151,7 @@ export class PurchaseRequestController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const parsed = parsePatchPRStatus(ctx.body);
       if (!parsed.success) {
         ctx.set.status = 400;
@@ -156,15 +164,46 @@ export class PurchaseRequestController {
         return failedResponse(correlationId, "Purchase request not found", 404);
       }
 
-      const userId = ctx.user?.sub;
+      const userId = ctx.user?.sub ?? "";
       
-      const updated = await PurchaseRequestModel.patchStatus(id, parsed.data.status, userId);
+      const updated = await PurchaseRequestModel.patchStatus(id, parsed.data, userId);
+      if (!updated) {
+        ctx.set.status = 500;
+        return failedResponse(correlationId, "Failed to update status", 500);
+      }
+
+      // Determine action and description for logging
+      let action = "UPDATE_ORDER";
+      let description = `User ${ctx.user?.email} mengubah status Purchase Request "${updated.code}"`;
+
+      if (pr.status === 0 && updated.status === 1) {
+        action = "SUBMIT_PR";
+        description = `User ${ctx.user?.email} mengajukan Purchase Request "${updated.code}" untuk diproses approval`;
+      } else if (pr.status === 0 && updated.status === 2) {
+        action = "BYPASS_PR";
+        description = `User ${ctx.user?.email} mengajukan dan otomatis menyetujui Purchase Request "${updated.code}" (Auto-Approved)`;
+      } else if (pr.status === 1 && updated.status === 2) {
+        if (updated.currentApprovalStage === 3 && pr.currentApprovalStage === 2) {
+          action = "APPROVE_PR";
+          description = `User ${ctx.user?.email} melakukan approval akhir (Manager) pada Purchase Request "${updated.code}"`;
+        } else {
+          action = "BYPASS_PR";
+          description = `User ${ctx.user?.email} melakukan BYPASS Approval pada Purchase Request "${updated.code}"`;
+        }
+      } else if (pr.status === 1 && updated.status === 3) {
+        action = "REJECT_PR";
+        description = `User ${ctx.user?.email} menolak Purchase Request "${updated.code}"${parsed.data.remark ? ` dengan alasan: "${parsed.data.remark}"` : ""}`;
+      } else if (pr.status === 1 && updated.status === 1 && (updated.currentApprovalStage ?? 0) > (pr.currentApprovalStage ?? 0)) {
+        action = "APPROVE_PR";
+        const stageName = pr.currentApprovalStage === 0 ? "Warehouse Head" : "Branch Head";
+        description = `User ${ctx.user?.email} menyetujui tingkat ${stageName} pada Purchase Request "${updated.code}"`;
+      }
 
       await logActivity({
         userId: ctx.user?.sub,
-        action: "UPDATE_ORDER",
+        action,
         module: "PURCHASE_REQUEST",
-        description: `User ${ctx.user?.email} mengubah status Purchase Request "${updated.code}" menjadi ${parsed.data.status}`,
+        description,
       });
 
       return successResponse(correlationId, "Purchase request status updated", { record: updated });
@@ -178,7 +217,7 @@ export class PurchaseRequestController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const pr = await PurchaseRequestModel.findById(id);
       if (!pr) {
         ctx.set.status = 404;

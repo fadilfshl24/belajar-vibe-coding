@@ -55,7 +55,7 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const vendor = await VendorModel.findById(id);
       if (!vendor) {
         ctx.set.status = 404;
@@ -84,7 +84,7 @@ export class VendorController {
         return failedResponse(correlationId, "Vendor code already exists", 409);
       }
 
-      const newVendor = await VendorModel.create(parsed.data as CreateVendorInput);
+      const newVendor = await VendorModel.create(parsed.data as CreateVendorInput, ctx.user?.sub);
       
       await logActivity({
         userId: ctx.user?.sub,
@@ -105,7 +105,7 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const parsed = parseUpdateVendorInput(ctx.body);
       if (!parsed.success) {
         ctx.set.status = 400;
@@ -120,7 +120,7 @@ export class VendorController {
         }
       }
 
-      const updated = await VendorModel.update(id, parsed.data as UpdateVendorInput);
+      const updated = await VendorModel.update(id, parsed.data as UpdateVendorInput, ctx.user?.sub);
       if (!updated) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Vendor not found", 404);
@@ -144,7 +144,7 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const deleted = await VendorModel.softDelete(id);
       if (!deleted) {
         ctx.set.status = 404;

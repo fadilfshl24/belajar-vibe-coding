@@ -53,6 +53,7 @@ export const items = pgTable(
     discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }).notNull().default("0.00"),
     discountPrice: decimal("discount_price", { precision: 15, scale: 2 }).notNull().default("0.00"),
     priceAfterDiscount: decimal("price_after_discount", { precision: 15, scale: 2 }).notNull().default("0.00"),
+    isAsset: boolean("is_asset").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
 
     ...auditColumns,

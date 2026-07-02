@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { getDbProvider } from "./providers";
+import * as schema from "./schema";
 
 /**
  * Core Database Instance
@@ -15,4 +16,4 @@ import { getDbProvider } from "./providers";
  */
 const provider = getDbProvider();
 
-export const db = provider.getClient() as ReturnType<typeof drizzle>;
+export const db = provider.getClient() as ReturnType<typeof drizzle<typeof schema>>;
