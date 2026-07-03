@@ -31,6 +31,7 @@ export const CHILD_MENUS: Record<string, any[]> = {
     { name: "Menus", code: "menu_management", path: "/menus", sortOrder: 3, icon: "menu", isActive: true },
     { name: "Permissions", code: "permission_management", path: "/permissions", sortOrder: 4, icon: "shield-check", isActive: true },
     { name: "Activity Logs", code: "activity_log", path: "/activity-logs", sortOrder: 5, icon: "activity", isActive: true },
+    { name: "User Mappings", code: "user_warehouse_mapping", path: "/settings/user-warehouse-mappings", sortOrder: 6, icon: "map", isActive: true },
   ],
 };
 

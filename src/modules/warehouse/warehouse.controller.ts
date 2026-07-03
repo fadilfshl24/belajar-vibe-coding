@@ -275,3 +275,129 @@ export class WarehouseHeadController {
     }
   }
 }
+
+/**
+ * WarehouseRegionController
+ *
+ * Endpoint untuk mendukung fitur filter wilayah pada Branch Head mapping.
+ * Mengembalikan data distinct dari kolom province & city_regency di tabel warehouses.
+ */
+export class WarehouseRegionController {
+  /**
+   * GET /api/warehouses/regions
+   * Mengembalikan daftar provinsi unik dari gudang yang aktif.
+   */
+  static async getProvinces(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { provinces: provincesTable } = await import("../region/region.schema");
+      const { isNull, eq } = await import("drizzle-orm");
+
+      const rows = await db
+        .selectDistinct({ id: warehousesTable.province, name: provincesTable.name })
+        .from(warehousesTable)
+        .leftJoin(provincesTable, eq(warehousesTable.province, provincesTable.id))
+        .where(
+          // Use SQL directly since and() requires specific type
+          isNull(warehousesTable.deletedAt)
+        );
+
+      // Filter active and non-null province in JS for safety
+      const provinces = rows
+        .filter(r => r.id !== null && r.id !== "")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return successResponse(correlationId, "Data found!", { provinces });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  /**
+   * GET /api/warehouse-regions/cities?province=X
+   * Mengembalikan daftar kota/kabupaten unik di provinsi tertentu.
+   */
+  static async getCitiesByProvince(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { province } = ctx.query as { province?: string };
+      if (!province) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "province query param is required", 400);
+      }
+
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { regencies: regenciesTable } = await import("../region/region.schema");
+      const { and, isNull, eq } = await import("drizzle-orm");
+
+      const rows = await db
+        .selectDistinct({ id: warehousesTable.cityRegency, name: regenciesTable.name })
+        .from(warehousesTable)
+        .leftJoin(regenciesTable, eq(warehousesTable.cityRegency, regenciesTable.id))
+        .where(
+          and(
+            isNull(warehousesTable.deletedAt),
+            eq(warehousesTable.isActive, true),
+            eq(warehousesTable.province, province)
+          )
+        );
+
+      const cities = rows
+        .filter(r => r.id !== null && r.id !== "")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return successResponse(correlationId, "Data found!", { cities });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  /**
+   * GET /api/warehouses/by-region?province=X&city=Y
+   * Mengembalikan daftar gudang aktif di wilayah tertentu.
+   */
+  static async getByRegion(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { province, city } = ctx.query as { province?: string; city?: string };
+
+      if (!province || !city) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "province and city query params are required", 400);
+      }
+
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { and, isNull, eq } = await import("drizzle-orm");
+
+      const records = await db
+        .select({
+          id: warehousesTable.id,
+          code: warehousesTable.code,
+          name: warehousesTable.name,
+          province: warehousesTable.province,
+          cityRegency: warehousesTable.cityRegency,
+        })
+        .from(warehousesTable)
+        .where(
+          and(
+            isNull(warehousesTable.deletedAt),
+            eq(warehousesTable.isActive, true),
+            eq(warehousesTable.province, province),
+            eq(warehousesTable.cityRegency, city)
+          )
+        )
+        .orderBy(warehousesTable.code);
+
+      return successResponse(correlationId, "Data found!", { records });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+}

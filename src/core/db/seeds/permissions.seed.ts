@@ -56,6 +56,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "superadmin", menuCode: "platform", ...ALL },
   { roleName: "superadmin", menuCode: "purchase_request", ...ALL },
   { roleName: "superadmin", menuCode: "purchase_order", ...ALL },
+  { roleName: "superadmin", menuCode: "user_warehouse_mapping", ...ALL },
 
   // --- Admin ---
   { roleName: "admin", menuCode: "dashboard", ...ALL },
@@ -75,6 +76,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "admin", menuCode: "platform", ...NONE },
   { roleName: "admin", menuCode: "purchase_request", ...NONE },
   { roleName: "admin", menuCode: "purchase_order", ...NONE },
+  { roleName: "admin", menuCode: "user_warehouse_mapping", ...ALL },
 
   // --- Warehouse Head ---
   { roleName: "warehouse_head", menuCode: "dashboard", ...ALL },
@@ -94,6 +96,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "warehouse_head", menuCode: "platform", ...NONE },
   { roleName: "warehouse_head", menuCode: "purchase_request", ...NONE },
   { roleName: "warehouse_head", menuCode: "purchase_order", ...NONE },
+  { roleName: "warehouse_head", menuCode: "user_warehouse_mapping", ...NONE },
 
   // --- Staff ---
   { roleName: "staff", menuCode: "dashboard", ...ALL },

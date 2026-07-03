@@ -249,7 +249,7 @@ export class PurchaseRequestModel {
       // Fetch user roles
       const userRoleRecords = await tx
         .select({
-          roleName: roles.name,
+          roleName: roles.code,
           warehouseId: userWarehouseRoles.warehouseId,
         })
         .from(userWarehouseRoles)
@@ -272,7 +272,7 @@ export class PurchaseRequestModel {
         // Determine start stage and stages to insert based on creator's role.
         const creatorRoleRecords = await tx
           .select({
-            roleName: roles.name,
+            roleName: roles.code,
             warehouseId: userWarehouseRoles.warehouseId,
           })
           .from(userWarehouseRoles)

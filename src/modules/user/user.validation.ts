@@ -45,6 +45,10 @@ const listQuerySchema = z.object({
   filterColumn: z.string().optional(),
   status: z.coerce.number().int().min(0).max(1).optional(),
   roleId: z.string().uuid().optional(),
+  // Exclude users by role name (comma-separated), e.g. "superadmin,admin"
+  excludeRoleNames: z.string().optional(),
+  // Exclude users that already have active warehouse mappings
+  excludeMappedUsers: z.coerce.boolean().optional(),
 });
 
 export function parseListQuery(query: unknown) {

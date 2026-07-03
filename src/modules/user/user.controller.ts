@@ -158,11 +158,16 @@ export class UserController {
         );
       }
 
-      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId } = parsed.data;
+      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId, excludeRoleNames, excludeMappedUsers } = parsed.data;
       const internalLimit = rawLimit === 1000 ? Number.MAX_SAFE_INTEGER : rawLimit;
 
+      // Parse comma-separated role names into array
+      const excludeRoleNamesArr = excludeRoleNames
+        ? excludeRoleNames.split(",").map(s => s.trim()).filter(Boolean)
+        : undefined;
+
       const [totalRecord, records] = await Promise.all([
-        UserModel.countAll({ searchTerm, filterColumn, status, roleId }),
+        UserModel.countAll({ searchTerm, filterColumn, status, roleId, excludeRoleNames: excludeRoleNamesArr, excludeMappedUsers }),
         UserModel.findAll({
           page,
           limit: internalLimit,
@@ -171,6 +176,8 @@ export class UserController {
           filterColumn,
           status,
           roleId,
+          excludeRoleNames: excludeRoleNamesArr,
+          excludeMappedUsers,
         }),
       ]);
 

@@ -71,4 +71,50 @@ Buatkan validasi dan permissionnya untuk pembuatan purchase ordernya, pastikan d
 
 Tolong buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
 
-#
+# issues-purchase-request-approval
+
+Buatkan issues-purchase-request-approval-plan.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan perencanaan untuk generate module purchase request approval yang di implementasikan menggunakan tanstack router, tanstack query, react hook form, zod, dan axios.
+
+Tambahkan juga notif indikator di tampilannya untuk masing - masing level yang akan approve purchase requestnya. dan jangan lupa untuk dibuatkan report monitoring status data purchase requestnya untuk approval sudah sampai mana
+
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan juga untuk approval level nya, bisa di atur di pengaturan, untuk approval level berapa saja yang di izinkan untuk approve purchase request approval. sebagai berikut :
+    1. Untuk role staff, berarti dia perlu approval dari warehouse head dan branch head dan manager
+    2. Untuk role warehouse head, berarti dia perlu approval dari branch head dan manager
+    3. Untuk role branch head, berarti dia perlu approval dari manager
+
+Ketika sudah di approve semua maka status Purchase Request berubah menjadi Approved dan siap untuk kelola oleh admin. jika belum semua makan statusnya masih Pending.
+
+Contoh case implementasi approval level yang nantinya akan dibuat. Pastikan tidak boleh ada yang loncat dan buatkan fitur agar bisa di bypass oleh superadmin jika terjadi sesuatu hal.
+
+dan dari sisi Purchase Order, dia hanya bisa mengambil data purchase order yang sudah Approved saja, tidak boleh yang statusnya Draft, Pending, Rejected, Closed
+
+Tolong buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-user-mapping-warehouse
+
+Buatkan issues-user-mapping-warehouse.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan perencanaan untuk generate module user mapping warehouse yang di implementasikan menggunakan tanstack router, tanstack query, react hook form, zod, dan axios.
+
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Buatkan function tambahan untuk user mapping warehouse, bisa di atur di pengaturan, untuk user mana saja yang bisa mengakses warehouse mana saja.
+6. Mappingan data user ke warehouse ini hanya berlaku untuk role tertentu saja, contohnya role staff, warehouse head, branch head, manager.
+7. Role superadmin tidak terpengaruh dengan user mapping warehouse ini, dia bisa mengakses semua warehouse.
+8. Sehingga ketika staff atau warehouse head ingin membuat sebuah purchase request baru untuk form input warehouse / gudang sudah terpilih otomatis berdasarkan mappingan warehouse usernya.
+9. Tolong buatkan table mappingan antara user dan warehousenya dan pastikan juga di get ketika login di masukkan ke dalam session agar frontend bisa tau data user tersebut ter mapping ke warehouse yang mana.
+10. Buatkan validasi dan permissionnya untuk pembuatan purchase requestnya, pastikan di validasi dengan baik
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.

@@ -1,10 +1,10 @@
-import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, notInArray, or } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { users } from "./user.schema";
 import { toUserDTO, type UserDTO } from "./user.dto";
 import type { UserRecord } from "./user.schema";
-import { roles, userWarehouseRoles } from "../role/role.schema";
+import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
 
 // ---------------------------------------------------------------------------
@@ -69,6 +69,17 @@ function buildFilterCondition(params: {
   return conds;
 }
 
+/**
+ * Ambil daftar userId yang sudah memiliki mapping aktif di user_warehouse_mappings
+ */
+async function getMappedUserIds(): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: userWarehouseMappings.userId })
+    .from(userWarehouseMappings)
+    .where(and(eq(userWarehouseMappings.isActive, true), isNull(userWarehouseMappings.deletedAt)));
+  return rows.map(r => r.userId);
+}
+
 // ---------------------------------------------------------------------------
 // UserModel
 // ---------------------------------------------------------------------------
@@ -89,6 +100,7 @@ export class UserModel {
         user: users,
         role: {
           id: roles.id,
+          code: roles.code,
           name: roles.name,
         }
       })
@@ -107,14 +119,31 @@ export class UserModel {
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    excludeRoleNames?: string[];
+    excludeMappedUsers?: boolean;
   }): Promise<number> {
-    const { searchTerm, filterColumn, status, roleId } = params;
-    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
-    let query = db.select({ total: count() }).from(users);
-    if (roleId) {
-      query = query.leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt))) as any;
+    const { searchTerm, filterColumn, status, roleId, excludeRoleNames, excludeMappedUsers } = params;
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+
+    // Exclude by role names
+    if (excludeRoleNames && excludeRoleNames.length > 0) {
+      whereClause = and(whereClause, or(isNull(roles.code), notInArray(roles.code, excludeRoleNames)))!;
     }
-    const result = await query.where(whereClause);
+
+    // Exclude already-mapped users
+    if (excludeMappedUsers) {
+      const mappedIds = await getMappedUserIds();
+      if (mappedIds.length > 0) {
+        whereClause = and(whereClause, notInArray(users.id, mappedIds))!;
+      }
+    }
+
+    const result = await db
+      .select({ total: count() })
+      .from(users)
+      .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+      .leftJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .where(whereClause);
     return result[0]?.total ?? 0;
   }
 
@@ -126,17 +155,32 @@ export class UserModel {
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    excludeRoleNames?: string[];
+    excludeMappedUsers?: boolean;
   }): Promise<UserDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, excludeRoleNames, excludeMappedUsers } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
     const offset = (page - 1) * limit;
+
+    if (excludeRoleNames && excludeRoleNames.length > 0) {
+      whereClause = and(whereClause, or(isNull(roles.code), notInArray(roles.code, excludeRoleNames)))!;
+    }
+
+    // Exclude already-mapped users
+    if (excludeMappedUsers) {
+      const mappedIds = await getMappedUserIds();
+      if (mappedIds.length > 0) {
+        whereClause = and(whereClause, notInArray(users.id, mappedIds))!;
+      }
+    }
 
     const result = await db
       .select({
         user: users,
         role: {
           id: roles.id,
+          code: roles.code,
           name: roles.name,
         }
       })
@@ -253,6 +297,7 @@ export class UserModel {
           user: users,
           role: {
             id: roles.id,
+            code: roles.code,
             name: roles.name,
           }
         })

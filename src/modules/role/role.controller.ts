@@ -95,9 +95,9 @@ export class RoleController {
         );
       }
 
-      const existing = await RoleModel.findByName(parsed.data.name);
+      const existing = await RoleModel.findByCode(parsed.data.code);
       if (existing) {
-        return failedResponse(correlationId, "Create data failed!", 400, "Role name already exists");
+        return failedResponse(correlationId, "Create data failed!", 400, "Role code already exists");
       }
 
       const role = await RoleModel.createRole(parsed.data, ctx.user?.sub);

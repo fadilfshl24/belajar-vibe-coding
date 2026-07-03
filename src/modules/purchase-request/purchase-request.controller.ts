@@ -11,6 +11,9 @@ import {
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
 import { logActivity } from "../../core/utils/activityLogger";
+import { db } from "../../core/db";
+import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
+import { eq, and, isNull } from "drizzle-orm";
 
 export class PurchaseRequestController {
   static async getAll(ctx: Context) {
@@ -85,7 +88,42 @@ export class PurchaseRequestController {
         return failedResponse(correlationId, "Unauthorized user", 401);
       }
 
-      const newPR = await PurchaseRequestModel.create(parsed.data as CreatePRInput, userId);
+      // Check Warehouse Access
+      const prData = parsed.data as CreatePRInput;
+      const userRoles = await db
+        .select({ roleName: roles.code })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, userId),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const isSuperadmin = userRoles.some((r) => r.roleName === "superadmin");
+
+      if (!isSuperadmin) {
+        const mapping = await db
+          .select()
+          .from(userWarehouseMappings)
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, userId),
+              eq(userWarehouseMappings.warehouseId, prData.warehouseId),
+              eq(userWarehouseMappings.isActive, true)
+            )
+          )
+          .limit(1);
+
+        if (mapping.length === 0) {
+          ctx.set.status = 403;
+          return failedResponse(correlationId, "Forbidden", 403, "You do not have access to create PR for this warehouse");
+        }
+      }
+
+      const newPR = await PurchaseRequestModel.create(prData, userId);
       if (!newPR) {
         ctx.set.status = 500;
         return failedResponse(correlationId, "Failed to create purchase request", 500);
@@ -127,7 +165,50 @@ export class PurchaseRequestController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const updated = await PurchaseRequestModel.update(id, parsed.data as UpdatePRInput, ctx.user?.sub);
+      const userId = ctx.user?.sub;
+      if (!userId) {
+        ctx.set.status = 401;
+        return failedResponse(correlationId, "Unauthorized user", 401);
+      }
+
+      const updateData = parsed.data as UpdatePRInput;
+      if (updateData.warehouseId && updateData.warehouseId !== pr.warehouseId) {
+        // Check Warehouse Access
+        const userRoles = await db
+          .select({ roleName: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(
+            and(
+              eq(userWarehouseRoles.userId, userId),
+              isNull(userWarehouseRoles.deletedAt),
+              isNull(roles.deletedAt)
+            )
+          );
+
+        const isSuperadmin = userRoles.some((r) => r.roleName === "superadmin");
+
+        if (!isSuperadmin) {
+          const mapping = await db
+            .select()
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.warehouseId, updateData.warehouseId),
+                eq(userWarehouseMappings.isActive, true)
+              )
+            )
+            .limit(1);
+
+          if (mapping.length === 0) {
+            ctx.set.status = 403;
+            return failedResponse(correlationId, "Forbidden", 403, "You do not have access to this warehouse");
+          }
+        }
+      }
+
+      const updated = await PurchaseRequestModel.update(id, updateData, userId);
       if (!updated) {
         ctx.set.status = 500;
         return failedResponse(correlationId, "Failed to update purchase request", 500);

@@ -8,9 +8,10 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import { UserModel } from "../user";
 import { eq, and, isNull, asc, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
-import { roles, userWarehouseRoles } from "../role/role.schema";
+import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
 import { menus } from "../menu/menu.schema";
 import { roleMenuPermissions } from "../permission/permission.schema";
+import { warehouses } from "../warehouse/warehouse.schema";
 
 export class AuthController {
   // ---------------------------------------------------------------------------
@@ -344,7 +345,7 @@ export class AuthController {
         .select({
           roleId: userWarehouseRoles.roleId,
           warehouseId: userWarehouseRoles.warehouseId,
-          roleName: roles.name,
+          roleName: roles.code,
         })
         .from(userWarehouseRoles)
         .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
@@ -489,6 +490,29 @@ export class AuthController {
         item.children.sort(sortFn);
       }
 
+      const isSuperadmin = userRoles.some(r => r.roleName === "superadmin");
+      let mappedWarehouses: { id: string; code: string; name: string }[] = [];
+      
+      if (isSuperadmin) {
+        mappedWarehouses = await db
+          .select({ id: warehouses.id, code: warehouses.code, name: warehouses.name })
+          .from(warehouses)
+          .where(and(eq(warehouses.isActive, true), isNull(warehouses.deletedAt)));
+      } else {
+        mappedWarehouses = await db
+          .select({ id: warehouses.id, code: warehouses.code, name: warehouses.name })
+          .from(userWarehouseMappings)
+          .innerJoin(warehouses, eq(userWarehouseMappings.warehouseId, warehouses.id))
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, userId),
+              eq(userWarehouseMappings.isActive, true),
+              eq(warehouses.isActive, true),
+              isNull(warehouses.deletedAt)
+            )
+          );
+      }
+
       return successResponse(correlationId, "User details fetched successfully", {
         user: {
           id: user.id,
@@ -499,6 +523,7 @@ export class AuthController {
           roleWarehouseMappings: userRoles.map((ur) => ({ roleName: ur.roleName, warehouseId: ur.warehouseId })),
           permissions: Object.values(mergedPermissions),
           menus: rootMenus,
+          mappedWarehouses,
         },
       });
     } catch (err: unknown) {

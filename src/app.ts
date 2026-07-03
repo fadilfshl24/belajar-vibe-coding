@@ -18,6 +18,8 @@ import { vendorRoutes } from "./modules/vendor";
 import { platformRoutes } from "./modules/platform";
 import { purchaseRequestRoutes } from "./modules/purchase-request";
 import { purchaseOrderRoutes } from "./modules/purchase-order";
+import { userWarehouseMappingRoutes } from "./modules/user-warehouse-mapping";
+import { warehouseRegionRoutes } from "./modules/warehouse/warehouse.routes";
 
 /**
  * App Factory
@@ -61,6 +63,8 @@ export const app = new Elysia()
   .use(regionRoutes)
   .use(purchaseRequestRoutes)
   .use(purchaseOrderRoutes)
+  .use(userWarehouseMappingRoutes)
+  .use(warehouseRegionRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),

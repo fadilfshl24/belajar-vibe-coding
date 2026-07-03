@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 import { users } from "../user/user.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
@@ -13,11 +13,13 @@ export const roles = pgTable(
   "roles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    name: varchar("name", { length: 255 }).notNull().unique(),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     ...auditColumns,
   },
   (t) => [
+    index("idx_roles_code").on(t.code),
     index("idx_roles_name").on(t.name),
     index("idx_roles_deleted_at").on(t.deletedAt),
   ]
@@ -57,7 +59,35 @@ export const userWarehouseRoles = pgTable(
   ]
 );
 
+/**
+ * Tabel: user_warehouse_mappings
+ *
+ * Tabel yang memetakan user ke warehouse mana saja yang berhak mereka akses.
+ * Hanya berlaku untuk non-superadmin.
+ */
+export const userWarehouseMappings = pgTable(
+  "user_warehouse_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "cascade" }),
+    isActive: boolean("is_active").notNull().default(true),
+    ...auditColumns,
+  },
+  (t) => [
+    index("idx_uwm_user_id").on(t.userId),
+    index("idx_uwm_warehouse_id").on(t.warehouseId),
+    uniqueIndex("uq_user_warehouse").on(t.userId, t.warehouseId),
+  ]
+);
+
 export type RoleRecord = typeof roles.$inferSelect;
 export type RoleInsert = typeof roles.$inferInsert;
 export type UserWarehouseRoleRecord = typeof userWarehouseRoles.$inferSelect;
 export type UserWarehouseRoleInsert = typeof userWarehouseRoles.$inferInsert;
+export type UserWarehouseMappingRecord = typeof userWarehouseMappings.$inferSelect;
+export type UserWarehouseMappingInsert = typeof userWarehouseMappings.$inferInsert;

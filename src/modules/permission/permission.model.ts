@@ -16,7 +16,7 @@ export class PermissionModel {
       .select({
         id: roleMenuPermissions.id,
         roleId: roleMenuPermissions.roleId,
-        roleName: roles.name,
+        roleName: roles.code,
         menuId: roleMenuPermissions.menuId,
         menuName: menus.name,
         menuCode: menus.code,
@@ -29,7 +29,7 @@ export class PermissionModel {
       .innerJoin(roles, eq(roleMenuPermissions.roleId, roles.id))
       .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
       .where(isNull(roleMenuPermissions.deletedAt))
-      .orderBy(roles.name, menus.name);
+      .orderBy(roles.code, menus.name);
 
     return result;
   }
@@ -43,7 +43,7 @@ export class PermissionModel {
       .select({
         id: roleMenuPermissions.id,
         roleId: roleMenuPermissions.roleId,
-        roleName: roles.name,
+        roleName: roles.code,
         menuId: roleMenuPermissions.menuId,
         menuName: menus.name,
         menuCode: menus.code,
