@@ -1,18 +1,54 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
+import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 
 export class TransactionService {
-  static async completeTransaction(transactionId: string, userId?: string) {
+  /**
+   * Returns true if the given item at the given warehouse is locked by an Approved Purchase Request.
+   * Only Superadmin can override a locked stock.
+   */
+  static async isStockLocked(warehouseId: string, itemId: string): Promise<boolean> {
+    const lockedPR = await db
+      .select({ id: purchaseRequests.id })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          eq(purchaseRequestDetails.itemId, itemId),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      )
+      .limit(1);
+
+    return lockedPR.length > 0;
+  }
+
+  static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
+    // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
+    if (txData.type === "OUT" && !isSuperadmin) {
+      for (const item of txData.items) {
+        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
+        if (locked) {
+          throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
+        }
+      }
+    }
+
     await db.transaction(async (tx) => {
-      // ⚡ Bolt Optimization: Batch fetch stocks to avoid N+1 queries
-      const itemIds = txData.items.map(item => item.itemId);
+      const itemIds = txData.items.map((item) => item.itemId);
       const stocks = itemIds.length > 0
         ? await tx
             .select()
@@ -24,7 +60,7 @@ export class TransactionService {
               )
             )
         : [];
-      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+      const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
       const insertPayloads = [];
       const updatePromises = [];
@@ -34,9 +70,6 @@ export class TransactionService {
         const qty = Number(item.quantity);
 
         if (txData.type === "IN") {
-          currentQty += qty;
-          updatedStockMap.set(item.itemId, currentQty);
-
           if (stock) {
             updatePromises.push(
               tx.update(inventoryStocks)
@@ -50,7 +83,7 @@ export class TransactionService {
           } else {
             insertPayloads.push({
               warehouseId: txData.warehouseId,
-              itemId: itemId,
+              itemId: item.itemId,
               quantity: qty.toString(),
               createdBy: userId,
               updatedBy: userId,
@@ -58,7 +91,7 @@ export class TransactionService {
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.quantity) < qty) {
-            throw new Error(`Insufficient stock for item ${itemId}`);
+            throw new Error(`Insufficient stock for item ${item.itemId}`);
           }
           updatePromises.push(
             tx.update(inventoryStocks)
@@ -72,7 +105,6 @@ export class TransactionService {
         }
       }
 
-      // ⚡ Bolt Optimization: Batch insert and parallel updates
       if (insertPayloads.length > 0) {
         await tx.insert(inventoryStocks).values(insertPayloads);
       }
@@ -94,8 +126,7 @@ export class TransactionService {
       if (!txData) return;
 
       await db.transaction(async (tx) => {
-        // ⚡ Bolt Optimization: Batch fetch stocks to avoid N+1 queries
-        const itemIds = txData.items.map(item => item.itemId);
+        const itemIds = txData.items.map((item) => item.itemId);
         const stocks = itemIds.length > 0
           ? await tx
               .select()
@@ -107,14 +138,15 @@ export class TransactionService {
                 )
               )
           : [];
-        const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+        const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
         const updatePromises = [];
 
         for (const item of txData.items) {
           const stock = stockMap.get(item.itemId);
-          
+
           if (stock) {
+            const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
               updatePromises.push(
@@ -141,7 +173,6 @@ export class TransactionService {
           }
         }
 
-        // ⚡ Bolt Optimization: Parallelize updates
         if (updatePromises.length > 0) {
           await Promise.all(updatePromises);
         }
@@ -149,3 +180,4 @@ export class TransactionService {
     }
   }
 }
+

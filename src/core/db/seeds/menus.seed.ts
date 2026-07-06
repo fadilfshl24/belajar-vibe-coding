@@ -15,6 +15,7 @@ export const CHILD_MENUS: Record<string, any[]> = {
     { name: "Barang Keluar", code: "barang_keluar", path: "/stock-orders/outbound", sortOrder: 2, icon: "arrow-down-right", isActive: true },
     { name: "Purchase Request", code: "purchase_request", path: "/purchase-requests", sortOrder: 3, icon: "file-text", isActive: true },
     { name: "Purchase Order", code: "purchase_order", path: "/purchase-orders", sortOrder: 4, icon: "shopping-cart", isActive: true },
+    { name: "Mutasi Stok", code: "inventory_mutations", path: "/inventory/mutations", sortOrder: 5, icon: "activity", isActive: true },
   ],
   master_data: [
     { name: "Master Barang", code: "item", path: "/items", sortOrder: 1, icon: "package", isActive: true },

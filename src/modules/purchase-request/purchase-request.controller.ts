@@ -13,10 +13,10 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import { logActivity } from "../../core/utils/activityLogger";
 import { db } from "../../core/db";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 
 export class PurchaseRequestController {
-  static async getAll(ctx: Context) {
+  static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
@@ -27,9 +27,49 @@ export class PurchaseRequestController {
       }
 
       const params = parsed.data;
+
+      // ── Role-Based Visibility ─────────────────────────────────────────────────
+      let requestedByUserId: string | undefined = undefined;
+      let visibleWarehouseIds: string[] | undefined = undefined;
+
+      const userId = ctx.user?.sub;
+      if (userId) {
+        // Fetch user roles
+        const userRoleRows = await db
+          .select({ roleCode: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(and(isNull(userWarehouseRoles.deletedAt), eq(userWarehouseRoles.userId, userId)));
+
+        const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
+        const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
+        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head"].includes(r));
+        const isStaff = !isGlobalViewer && !isRestrictedByWarehouse;
+
+        if (isStaff) {
+          // Staff: only see own PRs
+          requestedByUserId = userId;
+        } else if (!isGlobalViewer && isRestrictedByWarehouse) {
+          // WH Head / Branch Head: see PRs from their mapped warehouses
+          const mappings = await db
+            .select({ warehouseId: userWarehouseMappings.warehouseId })
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.isActive, true),
+                isNull(userWarehouseMappings.deletedAt)
+              )
+            );
+          visibleWarehouseIds = mappings.map((m) => m.warehouseId);
+        }
+        // superadmin / admin / manager: no additional filter
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       const [totalRecord, records] = await Promise.all([
-        PurchaseRequestModel.countAll(params),
-        PurchaseRequestModel.findAll(params),
+        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds }),
+        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;
@@ -322,6 +362,25 @@ export class PurchaseRequestController {
     } catch (err: unknown) {
       ctx.set.status = 500;
       return failedResponse(correlationId, "Failed to delete purchase request", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  static async getApprovers(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const warehouseId = (ctx.params as Record<string, string>).warehouseId;
+      if (!warehouseId) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Warehouse ID is required", 400);
+      }
+
+      const approvers = await PurchaseRequestModel.getApprovers(warehouseId);
+      
+      return successResponse(correlationId, "Approvers fetched successfully", approvers);
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to fetch approvers", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 }

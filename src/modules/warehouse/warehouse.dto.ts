@@ -26,6 +26,11 @@ export interface WarehouseHeadDTO {
   id: string;
   warehouseId: string;
   userId: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   isActive: boolean;
   description: string | null;
   createdAt: Date;

@@ -42,8 +42,9 @@ function buildFilterCondition(params: {
   filterColumn?: string;
   status?: number;
   roleId?: string;
+  roleCode?: string;
 }) {
-  const { searchTerm, filterColumn, status, roleId } = params;
+  const { searchTerm, filterColumn, status, roleId, roleCode } = params;
   let conds = isNull(users.deletedAt);
 
   if (status !== undefined) {
@@ -52,6 +53,10 @@ function buildFilterCondition(params: {
 
   if (roleId) {
     conds = and(conds, eq(userWarehouseRoles.roleId, roleId))!;
+  }
+
+  if (roleCode) {
+    conds = and(conds, eq(roles.code, roleCode))!;
   }
 
   if (searchTerm) {
@@ -119,11 +124,12 @@ export class UserModel {
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    roleCode?: string;
     excludeRoleNames?: string[];
     excludeMappedUsers?: boolean;
   }): Promise<number> {
-    const { searchTerm, filterColumn, status, roleId, excludeRoleNames, excludeMappedUsers } = params;
-    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+    const { searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames, excludeMappedUsers } = params;
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode });
 
     // Exclude by role names
     if (excludeRoleNames && excludeRoleNames.length > 0) {
@@ -155,12 +161,13 @@ export class UserModel {
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    roleCode?: string;
     excludeRoleNames?: string[];
     excludeMappedUsers?: boolean;
   }): Promise<UserDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, excludeRoleNames, excludeMappedUsers } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames, excludeMappedUsers } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode });
     const offset = (page - 1) * limit;
 
     if (excludeRoleNames && excludeRoleNames.length > 0) {
@@ -219,21 +226,16 @@ export class UserModel {
         .returning();
 
       if (!inserted) throw new Error("Insert did not return a record");
-
+      
       if (payload.roleId) {
-        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
-        const warehouseId = whs[0]?.id;
-        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
-
         await tx.insert(userWarehouseRoles).values({
           userId: inserted.id,
-          warehouseId,
           roleId: payload.roleId,
           createdBy: userId,
           updatedBy: userId,
         });
       }
-
+      
       return inserted;
     });
   }
@@ -275,16 +277,11 @@ export class UserModel {
       if (!updated) return undefined;
 
       if (payload.roleId !== undefined) {
-        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
-        const warehouseId = whs[0]?.id;
-        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
-
         await tx.delete(userWarehouseRoles).where(eq(userWarehouseRoles.userId, id));
 
         if (payload.roleId) {
           await tx.insert(userWarehouseRoles).values({
             userId: id,
-            warehouseId,
             roleId: payload.roleId,
             createdBy: userId,
             updatedBy: userId,

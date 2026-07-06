@@ -127,6 +127,13 @@
       "when": 1783062279087,
       "tag": "0017_odd_newton_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783325945675,
+      "tag": "0018_smart_sabretooth",
+      "breakpoints": true
     }
   ]
 }

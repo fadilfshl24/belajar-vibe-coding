@@ -28,6 +28,7 @@ const listQuerySchema = z.object({
   searchTerm: z.string().optional(),
   filterColumn: z.string().optional(),
   isActive: z.string().optional().transform(val => val === "true" ? true : val === "false" ? false : undefined),
+  excludeHasHead: z.string().optional().transform(val => val === "true"),
 });
 
 // ---------------------------------------------------------------------------

@@ -45,7 +45,6 @@ export const userWarehouseRoles = pgTable(
       .notNull()
       .references(() => users.id),
     warehouseId: uuid("warehouse_id")
-      .notNull()
       .references(() => warehouses.id),
     roleId: uuid("role_id")
       .notNull()

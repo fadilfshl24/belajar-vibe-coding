@@ -100,8 +100,12 @@ export class TransactionController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
       const id = (ctx.params as Record<string, string>).id ?? "";
-      
-      await TransactionService.completeTransaction(id, ctx.user?.sub);
+
+      // Check if caller is superadmin to bypass stock lock
+      const userRoles: string[] = (ctx.user as any)?.roles ?? [];
+      const isSuperadmin = userRoles.includes("superadmin");
+
+      await TransactionService.completeTransaction(id, ctx.user?.sub, isSuperadmin);
 
       await logActivity({
         userId: ctx.user?.sub,

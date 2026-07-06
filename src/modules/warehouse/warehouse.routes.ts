@@ -14,7 +14,7 @@ export const warehouseRoutes = new Elysia({ prefix: "/api/warehouses" })
   // Warehouse Heads sub-routes
   .get("/:id/heads", WarehouseHeadController.getByWarehouse, { beforeHandle: [permissionGuard("gudang", "canView")] })
   .post("/:id/heads", WarehouseHeadController.assign, { beforeHandle: [permissionGuard("gudang", "canUpdate")] })
-  .delete("/heads/:headId", WarehouseHeadController.unassign, { beforeHandle: [permissionGuard("gudang", "canUpdate")] });
+  .delete("/:id/heads/:headId", WarehouseHeadController.unassign, { beforeHandle: [permissionGuard("gudang", "canUpdate")] });
 
 /**
  * Separate region routes under /api/warehouse-regions to avoid /:id conflict

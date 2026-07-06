@@ -40,6 +40,8 @@ export const purchaseRequestDetails = pgTable(
     quantity: integer("quantity").notNull(),
     price: decimal("price", { precision: 18, scale: 2 }).notNull().default("0"),
     totalPrice: decimal("total_price", { precision: 18, scale: 2 }).notNull().default("0"),
+    remark: text("remark"),
+    attachmentUrl: varchar("attachment_url", { length: 500 }),
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
   },

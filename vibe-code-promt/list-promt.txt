@@ -118,3 +118,6 @@ Buatkan perencanaan untuk generate module user mapping warehouse yang di impleme
 10. Buatkan validasi dan permissionnya untuk pembuatan purchase requestnya, pastikan di validasi dengan baik
 
 Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-purchase-request-planning-by-role.md
+
