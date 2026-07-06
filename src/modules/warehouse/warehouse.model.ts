@@ -1,8 +1,10 @@
-import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or, notInArray } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { warehouses, warehouseHeads } from "./warehouse.schema";
 import { provinces, regencies, districts, villages } from "../region/region.schema";
+import { users } from "../user/user.schema";
+import { userWarehouseRoles, userWarehouseMappings, roles } from "../role/role.schema";
 import { toWarehouseDTO, toWarehouseHeadDTO, type WarehouseDTO, type WarehouseHeadDTO } from "./warehouse.dto";
 import type { WarehouseRecord, WarehouseHeadRecord } from "./warehouse.schema";
 import type { CreateWarehouseInput, UpdateWarehouseInput } from "./warehouse.validation";
@@ -36,8 +38,8 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; isActive?: boolean }) {
-  const { filterColumn, searchTerm, isActive } = params;
+function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; isActive?: boolean; excludeHasHead?: boolean }) {
+  const { filterColumn, searchTerm, isActive, excludeHasHead } = params;
   let conds = isNull(warehouses.deletedAt);
   if (isActive !== undefined) {
     conds = and(conds, eq(warehouses.isActive, isActive))!;
@@ -54,6 +56,9 @@ function buildFilterCondition(params: { filterColumn?: string; searchTerm?: stri
       }
     }
   }
+  if (excludeHasHead) {
+    conds = and(conds, notInArray(warehouses.id, db.select({ id: warehouseHeads.warehouseId }).from(warehouseHeads).where(isNull(warehouseHeads.deletedAt))))!;
+  }
   return conds;
 }
 
@@ -65,10 +70,11 @@ export class WarehouseModel {
     searchTerm?: string;
     filterColumn?: string;
     isActive?: boolean;
+    excludeHasHead?: boolean;
   }): Promise<WarehouseDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, isActive } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, isActive });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, isActive, excludeHasHead });
     const offset = (page - 1) * limit;
 
     const result = await db
@@ -99,7 +105,7 @@ export class WarehouseModel {
     });
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean; excludeHasHead?: boolean }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(warehouses).where(whereClause);
     return result[0]?.total ?? 0;
@@ -223,29 +229,94 @@ export class WarehouseModel {
 export class WarehouseHeadModel {
   static async findByWarehouse(warehouseId: string): Promise<WarehouseHeadDTO[]> {
     const result = await db
-      .select()
+      .select({
+        head: warehouseHeads,
+        user: {
+          id: users.id,
+          name: users.name,
+          email: users.email
+        }
+      })
       .from(warehouseHeads)
-      .where(and(eq(warehouseHeads.warehouseId, warehouseId), isNull(warehouseHeads.deletedAt)));
-    return result.map(toWarehouseHeadDTO);
+      .innerJoin(users, eq(warehouseHeads.userId, users.id))
+      .where(and(
+        eq(warehouseHeads.warehouseId, warehouseId),
+        isNull(warehouseHeads.deletedAt),
+        isNull(users.deletedAt)
+      ));
+      
+    return result.map(row => {
+      const dto = toWarehouseHeadDTO(row.head);
+      dto.user = row.user;
+      return dto;
+    });
   }
 
   static async assign(payload: { warehouseId: string, userId: string, description?: string }): Promise<WarehouseHeadRecord> {
-    const result = await db.insert(warehouseHeads).values({
-      warehouseId: payload.warehouseId,
-      userId: payload.userId,
-      description: payload.description || null,
-      isActive: true,
-    }).returning();
-    if (!result[0]) throw new Error("Failed to assign warehouse head");
-    return result[0];
+    return await db.transaction(async (tx) => {
+      const result = await tx.insert(warehouseHeads).values({
+        warehouseId: payload.warehouseId,
+        userId: payload.userId,
+        description: payload.description || null,
+        isActive: true,
+      }).returning();
+
+      if (!result[0]) throw new Error("Failed to assign warehouse head");
+
+      const roleRes = await tx.select().from(roles).where(eq(roles.code, "warehouse_head")).limit(1);
+      const headRoleId = roleRes[0]?.id;
+
+      if (headRoleId) {
+        await tx.insert(userWarehouseRoles).values({
+          userId: payload.userId,
+          warehouseId: payload.warehouseId,
+          roleId: headRoleId,
+        }).onConflictDoNothing();
+      }
+
+      await tx.insert(userWarehouseMappings).values({
+        userId: payload.userId,
+        warehouseId: payload.warehouseId,
+      }).onConflictDoNothing();
+
+      return result[0];
+    });
   }
 
   static async softDelete(headId: string): Promise<boolean> {
-    const result = await db
-      .update(warehouseHeads)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(warehouseHeads.id, headId), isNull(warehouseHeads.deletedAt)))
-      .returning({ id: warehouseHeads.id });
-    return result.length > 0;
+    return await db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(warehouseHeads)
+        .where(and(eq(warehouseHeads.id, headId), isNull(warehouseHeads.deletedAt)))
+        .limit(1);
+
+      if (!existing[0]) return false;
+
+      await tx
+        .update(warehouseHeads)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(warehouseHeads.id, headId));
+
+      await tx
+        .delete(userWarehouseRoles)
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, existing[0].userId),
+            eq(userWarehouseRoles.warehouseId, existing[0].warehouseId)
+          )
+        );
+
+      await tx
+        .delete(userWarehouseMappings)
+        .where(
+          and(
+            eq(userWarehouseMappings.userId, existing[0].userId),
+            eq(userWarehouseMappings.warehouseId, existing[0].warehouseId)
+          )
+        );
+
+      return true;
+    });
   }
 }

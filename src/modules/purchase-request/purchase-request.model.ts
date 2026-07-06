@@ -1,10 +1,13 @@
-import { and, asc, count, desc, eq, ilike, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { purchaseRequests, purchaseRequestDetails, purchaseRequestApprovals } from "./purchase-request.schema";
 import { toPurchaseRequestDTO, type PurchaseRequestDTO } from "./purchase-request.dto";
 import type { PurchaseRequestRecord } from "./purchase-request.schema";
-import { roles, userWarehouseRoles } from "../role/role.schema";
+import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
+import { users } from "../user/user.schema";
+import { transactions, transactionItems } from "../transaction/transaction.schema";
+import { inventoryStocks } from "../inventory/inventory.schema";
 
 function resolveOrderColumn(key: string): AnyColumn {
   const map: Record<string, AnyColumn> = {
@@ -32,8 +35,16 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; status?: number; warehouseId?: string; customerId?: string }) {
-  const { filterColumn, searchTerm, status, warehouseId, customerId } = params;
+function buildFilterCondition(params: {
+  filterColumn?: string;
+  searchTerm?: string;
+  status?: number;
+  warehouseId?: string;
+  customerId?: string;
+  requestedByUserId?: string;
+  visibleWarehouseIds?: string[];
+}) {
+  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds } = params;
   let conds = isNull(purchaseRequests.deletedAt);
   if (status !== undefined) {
     conds = and(conds, eq(purchaseRequests.status, status))!;
@@ -43,6 +54,14 @@ function buildFilterCondition(params: { filterColumn?: string; searchTerm?: stri
   }
   if (customerId) {
     conds = and(conds, eq(purchaseRequests.customerId, customerId))!;
+  }
+  // Role-based visibility: staff can only see their own PRs
+  if (requestedByUserId) {
+    conds = and(conds, eq(purchaseRequests.requestedBy, requestedByUserId))!;
+  }
+  // Role-based visibility: WH Head / Branch Head / Manager see only their mapped warehouses
+  if (visibleWarehouseIds && visibleWarehouseIds.length > 0) {
+    conds = and(conds, inArray(purchaseRequests.warehouseId, visibleWarehouseIds))!;
   }
   if (searchTerm) {
     const term = searchTerm.trim();
@@ -84,10 +103,12 @@ export class PurchaseRequestModel {
     status?: number;
     warehouseId?: string;
     customerId?: string;
+    requestedByUserId?: string;
+    visibleWarehouseIds?: string[];
   }): Promise<PurchaseRequestDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseRequests.findMany({
@@ -99,6 +120,9 @@ export class PurchaseRequestModel {
         customer: true,
         warehouse: true,
         requester: true,
+        details: {
+          where: isNull(purchaseRequestDetails.deletedAt)
+        },
         approvals: {
           with: {
             approver: true,
@@ -110,9 +134,9 @@ export class PurchaseRequestModel {
     return result.map(toPurchaseRequestDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[] }): Promise<number> {
     const whereClause = buildFilterCondition(params);
-    const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause);
+    const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause as any);
     return result[0]?.total ?? 0;
   }
 
@@ -144,8 +168,14 @@ export class PurchaseRequestModel {
     customerId?: string | null;
     warehouseId: string;
     description?: string;
-    details: { itemId: string; quantity: number; price: number }[];
+    details: { itemId: string; quantity: number; price: number; remark?: string; attachmentUrl?: string }[];
   }, userId: string): Promise<PurchaseRequestDTO | undefined> {
+    // Validate approvers
+    const approvers = await this.getApprovers(payload.warehouseId);
+    if (!approvers.warehouseHeads.length || !approvers.branchHeads.length) {
+      throw new Error("Gudang tujuan belum memiliki Kepala Gudang atau Kepala Cabang untuk proses persetujuan.");
+    }
+
     const result = await db.transaction(async (tx) => {
       const code = await generatePRCode();
       const requestDate = new Date().toISOString().slice(0, 10);
@@ -170,6 +200,8 @@ export class PurchaseRequestModel {
         quantity: d.quantity,
         price: d.price.toString(),
         totalPrice: (d.quantity * d.price).toString(),
+        remark: d.remark,
+        attachmentUrl: d.attachmentUrl,
         createdBy: userId,
         updatedBy: userId,
       }));
@@ -191,7 +223,7 @@ export class PurchaseRequestModel {
       customerId?: string | null;
       warehouseId?: string;
       description?: string;
-      details?: { itemId: string; quantity: number; price: number }[];
+      details?: { itemId: string; quantity: number; price: number; remark?: string; attachmentUrl?: string }[];
     },
     userId?: string
   ): Promise<PurchaseRequestDTO | undefined> {
@@ -205,6 +237,13 @@ export class PurchaseRequestModel {
       if (payload.warehouseId !== undefined) headerPayload.warehouseId = payload.warehouseId;
       if (payload.description !== undefined) headerPayload.description = payload.description;
       
+      // Check status first
+      const existingPR = await tx.query.purchaseRequests.findFirst({
+        where: and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt))
+      });
+      if (!existingPR) throw new Error("Purchase request not found");
+      if (existingPR.status !== 0) throw new Error("Hanya Purchase Request berstatus Draft yang dapat diubah.");
+
       const [pr] = await tx
         .update(purchaseRequests)
         .set(headerPayload)
@@ -223,6 +262,8 @@ export class PurchaseRequestModel {
           quantity: d.quantity,
           price: d.price.toString(),
           totalPrice: (d.quantity * d.price).toString(),
+          remark: d.remark,
+          attachmentUrl: d.attachmentUrl,
           createdBy: userId,
           updatedBy: userId,
         }));
@@ -233,6 +274,78 @@ export class PurchaseRequestModel {
     });
     
     return await this.findById(result.id);
+  }
+
+  /**
+   * Automatically creates an inbound transaction record + items and upserts inventory_stocks
+   * when a Purchase Request is fully approved. Called inside an existing db.transaction (tx).
+   */
+  private static async autoProcessApprovedPR(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    prId: string,
+    prCode: string,
+    warehouseId: string,
+    userId: string
+  ): Promise<void> {
+    // 1. Fetch PR details (items)
+    const prDetails = await tx
+      .select({ itemId: purchaseRequestDetails.itemId, quantity: purchaseRequestDetails.quantity })
+      .from(purchaseRequestDetails)
+      .where(and(eq(purchaseRequestDetails.purchaseRequestId, prId), isNull(purchaseRequestDetails.deletedAt)));
+
+    if (prDetails.length === 0) return;
+
+    // 2. Create inbound transaction header
+    const [txRecord] = await tx.insert(transactions).values({
+      warehouseId,
+      type: "IN",
+      referenceNumber: prCode,
+      description: `Stok masuk otomatis dari Purchase Request: ${prCode}`,
+      transactionDate: new Date(),
+      status: "COMPLETED",
+      createdBy: userId,
+      updatedBy: userId,
+    }).returning({ id: transactions.id });
+
+    if (!txRecord) throw new Error("Gagal membuat record transaksi inbound dari PR.");
+
+    // 3. Insert transaction items
+    await tx.insert(transactionItems).values(
+      prDetails.map((d) => ({
+        transactionId: txRecord.id,
+        itemId: d.itemId,
+        quantity: d.quantity.toString(),
+        createdBy: userId,
+        updatedBy: userId,
+      }))
+    );
+
+    // 4. Upsert inventory_stocks for each item
+    for (const detail of prDetails) {
+      const existing = await tx
+        .select({ id: inventoryStocks.id, quantity: inventoryStocks.quantity })
+        .from(inventoryStocks)
+        .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
+
+      if (existing.length === 0) {
+        // Insert new stock record
+        await tx.insert(inventoryStocks).values({
+          warehouseId,
+          itemId: detail.itemId,
+          quantity: detail.quantity.toString(),
+          createdBy: userId,
+          updatedBy: userId,
+        });
+      } else {
+        // Update existing stock quantity
+        const existingStock = existing[0]!;
+        const newQty = Number(existingStock.quantity) + Number(detail.quantity);
+        await tx
+          .update(inventoryStocks)
+          .set({ quantity: newQty.toString(), updatedAt: new Date(), updatedBy: userId })
+          .where(eq(inventoryStocks.id, existingStock.id));
+      }
+    }
   }
 
   static async patchStatus(
@@ -258,8 +371,8 @@ export class PurchaseRequestModel {
 
       const isSuperadmin = userRoleRecords.some(r => r.roleName === "superadmin");
       const isManager = userRoleRecords.some(r => r.roleName === "manager");
-      const isBranchHead = userRoleRecords.some(r => r.roleName === "branch_head" && r.warehouseId === pr.warehouseId);
-      const isWarehouseHead = userRoleRecords.some(r => r.roleName === "warehouse_head" && r.warehouseId === pr.warehouseId);
+      const isBranchHead = userRoleRecords.some(r => r.roleName === "branch_head" && (!r.warehouseId || r.warehouseId === pr.warehouseId));
+      const isWarehouseHead = userRoleRecords.some(r => r.roleName === "warehouse_head" && (!r.warehouseId || r.warehouseId === pr.warehouseId));
 
       const { status, remark } = payload;
       let updatePayload: any = {
@@ -281,8 +394,8 @@ export class PurchaseRequestModel {
 
         const creatorIsSuperadmin = creatorRoleRecords.some(r => r.roleName === "superadmin");
         const creatorIsManager = creatorRoleRecords.some(r => r.roleName === "manager");
-        const creatorIsBranchHead = creatorRoleRecords.some(r => r.roleName === "branch_head" && r.warehouseId === pr.warehouseId);
-        const creatorIsWarehouseHead = creatorRoleRecords.some(r => r.roleName === "warehouse_head" && r.warehouseId === pr.warehouseId);
+        const creatorIsBranchHead = creatorRoleRecords.some(r => r.roleName === "branch_head" && (!r.warehouseId || r.warehouseId === pr.warehouseId));
+        const creatorIsWarehouseHead = creatorRoleRecords.some(r => r.roleName === "warehouse_head" && (!r.warehouseId || r.warehouseId === pr.warehouseId));
 
         if (creatorIsSuperadmin || creatorIsManager) {
           updatePayload.status = 2; // Approved
@@ -385,6 +498,9 @@ export class PurchaseRequestModel {
                   eq(purchaseRequestApprovals.status, 0)
                 )
               );
+
+            // Auto-process approved PR: create inbound transaction + upsert inventory
+            await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
           } else {
             // Regular approval flow
             if (pr.currentApprovalStage === 0) {
@@ -433,6 +549,9 @@ export class PurchaseRequestModel {
               updatePayload.status = 2; // Approved
               updatePayload.approvedBy = userId;
               updatePayload.approvedAt = new Date();
+
+              // Auto-process approved PR: create inbound transaction + upsert inventory
+              await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
             }
           }
         } else {
@@ -454,11 +573,74 @@ export class PurchaseRequestModel {
   }
 
   static async softDelete(id: string): Promise<boolean> {
+    const existingPR = await db.query.purchaseRequests.findFirst({
+      where: and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt))
+    });
+    if (!existingPR) return false;
+    if (existingPR.status !== 0) throw new Error("Hanya Purchase Request berstatus Draft yang dapat dihapus.");
+
     const result = await db
       .update(purchaseRequests)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt)))
       .returning({ id: purchaseRequests.id });
     return result.length > 0;
+  }
+
+  static async getApprovers(warehouseId: string) {
+    const specificRolesData = await db
+      .select({
+        userId: users.id,
+        userName: users.name,
+        userEmail: users.email,
+        roleCode: roles.code
+      })
+      .from(userWarehouseRoles)
+      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
+      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .where(
+        and(
+          isNull(userWarehouseRoles.deletedAt),
+          isNull(users.deletedAt)
+        )
+      );
+    
+    // Filter in memory for simplicity
+    const managers = specificRolesData.filter(r => r.roleCode === "manager");
+    
+    const warehouseData = await db
+      .select({
+        userId: users.id,
+        userName: users.name,
+        userEmail: users.email,
+        roleCode: roles.code
+      })
+      .from(userWarehouseRoles)
+      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
+      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .innerJoin(userWarehouseMappings, eq(userWarehouseMappings.userId, users.id))
+      .where(
+        and(
+          eq(userWarehouseMappings.warehouseId, warehouseId),
+          eq(userWarehouseMappings.isActive, true),
+          isNull(userWarehouseMappings.deletedAt),
+          isNull(userWarehouseRoles.deletedAt),
+          isNull(users.deletedAt)
+        )
+      );
+
+    const warehouseHeads = warehouseData.filter(r => r.roleCode === "warehouse_head");
+    const branchHeads = warehouseData.filter(r => r.roleCode === "branch_head");
+
+    // Remove duplicates
+    const uniqueManagers = Array.from(new Map(managers.map(item => [item.userId, item])).values());
+    const uniqueWHHeads = Array.from(new Map(warehouseHeads.map(item => [item.userId, item])).values());
+    const uniqueBranchHeads = Array.from(new Map(branchHeads.map(item => [item.userId, item])).values());
+
+    return {
+      warehouseHeads: uniqueWHHeads,
+      branchHeads: uniqueBranchHeads,
+      managers: uniqueManagers
+    };
   }
 }

@@ -1,11 +1,38 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
+import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 
 export class TransactionService {
-  static async completeTransaction(transactionId: string, userId?: string) {
+  /**
+   * Returns true if the given item at the given warehouse is locked by an Approved Purchase Request.
+   * Only Superadmin can override a locked stock.
+   */
+  static async isStockLocked(warehouseId: string, itemId: string): Promise<boolean> {
+    const lockedPR = await db
+      .select({ id: purchaseRequests.id })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          eq(purchaseRequestDetails.itemId, itemId),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      )
+      .limit(1);
+
+    return lockedPR.length > 0;
+  }
+
+  static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
@@ -13,6 +40,14 @@ export class TransactionService {
     await db.transaction(async (tx) => {
       // Process items
       for (const item of txData.items) {
+        // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
+        if (txData.type === "OUT" && !isSuperadmin) {
+          const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
+          if (locked) {
+            throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
+          }
+        }
+
         const [stock] = await tx
           .select()
           .from(inventoryStocks)

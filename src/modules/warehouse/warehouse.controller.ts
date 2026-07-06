@@ -20,12 +20,12 @@ export class WarehouseController {
         return failedResponse(correlationId, "Invalid query params", 400, parsed.error.issues[0]?.message);
       }
 
-      const { page, limit, orderBy, searchTerm, filterColumn, isActive } = parsed.data;
+      const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
       const [totalRecord, records] = await Promise.all([
-        WarehouseModel.countAll({ searchTerm, filterColumn, isActive }),
-        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive }),
+        WarehouseModel.countAll({ searchTerm, filterColumn, isActive, excludeHasHead }),
+        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);
@@ -323,7 +323,7 @@ export class WarehouseRegionController {
   static async getCitiesByProvince(ctx: Context) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
-      const { province } = ctx.query as { province?: string };
+      const { province, excludeHasBranchHead } = ctx.query as { province?: string, excludeHasBranchHead?: string };
       if (!province) {
         ctx.set.status = 400;
         return failedResponse(correlationId, "province query param is required", 400);
@@ -332,19 +332,32 @@ export class WarehouseRegionController {
       const { db } = await import("../../core/db");
       const { warehouses: warehousesTable } = await import("./warehouse.schema");
       const { regencies: regenciesTable } = await import("../region/region.schema");
-      const { and, isNull, eq } = await import("drizzle-orm");
+      const { and, isNull, eq, notInArray } = await import("drizzle-orm");
+      const { userWarehouseMappings, userWarehouseRoles, roles } = await import("../role/role.schema");
+
+      let conds = and(
+        isNull(warehousesTable.deletedAt),
+        eq(warehousesTable.isActive, true),
+        eq(warehousesTable.province, province)
+      );
+
+      if (excludeHasBranchHead === 'true') {
+        const branchHeadSubquery = db
+          .select({ cityId: warehousesTable.cityRegency })
+          .from(userWarehouseMappings)
+          .innerJoin(warehousesTable, eq(userWarehouseMappings.warehouseId, warehousesTable.id))
+          .innerJoin(userWarehouseRoles, eq(userWarehouseMappings.userId, userWarehouseRoles.userId))
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(eq(roles.code, 'branch_head'));
+
+        conds = and(conds, notInArray(warehousesTable.cityRegency, branchHeadSubquery))!;
+      }
 
       const rows = await db
         .selectDistinct({ id: warehousesTable.cityRegency, name: regenciesTable.name })
         .from(warehousesTable)
         .leftJoin(regenciesTable, eq(warehousesTable.cityRegency, regenciesTable.id))
-        .where(
-          and(
-            isNull(warehousesTable.deletedAt),
-            eq(warehousesTable.isActive, true),
-            eq(warehousesTable.province, province)
-          )
-        );
+        .where(conds);
 
       const cities = rows
         .filter(r => r.id !== null && r.id !== "")

@@ -57,6 +57,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "superadmin", menuCode: "purchase_request", ...ALL },
   { roleName: "superadmin", menuCode: "purchase_order", ...ALL },
   { roleName: "superadmin", menuCode: "user_warehouse_mapping", ...ALL },
+  { roleName: "superadmin", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Admin ---
   { roleName: "admin", menuCode: "dashboard", ...ALL },
@@ -77,6 +78,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "admin", menuCode: "purchase_request", ...NONE },
   { roleName: "admin", menuCode: "purchase_order", ...NONE },
   { roleName: "admin", menuCode: "user_warehouse_mapping", ...ALL },
+  { roleName: "admin", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Warehouse Head ---
   { roleName: "warehouse_head", menuCode: "dashboard", ...ALL },
@@ -97,6 +99,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "warehouse_head", menuCode: "purchase_request", ...NONE },
   { roleName: "warehouse_head", menuCode: "purchase_order", ...NONE },
   { roleName: "warehouse_head", menuCode: "user_warehouse_mapping", ...NONE },
+  { roleName: "warehouse_head", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Staff ---
   { roleName: "staff", menuCode: "dashboard", ...ALL },
@@ -116,6 +119,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "staff", menuCode: "platform", ...NONE },
   { roleName: "staff", menuCode: "purchase_request", ...NONE },
   { roleName: "staff", menuCode: "purchase_order", ...NONE },
+  { roleName: "staff", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- User ---
   { roleName: "user", menuCode: "dashboard", ...ALL },
@@ -135,6 +139,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "user", menuCode: "platform", ...NONE },
   { roleName: "user", menuCode: "purchase_request", ...NONE },
   { roleName: "user", menuCode: "purchase_order", ...NONE },
+  { roleName: "user", menuCode: "inventory_mutations", ...NONE },
 ];
 
 export async function seedPermissions(
