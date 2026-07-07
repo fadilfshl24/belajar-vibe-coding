@@ -158,16 +158,45 @@ export class UserController {
         );
       }
 
-      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames, excludeMappedUsers } = parsed.data;
+      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers } = parsed.data;
       const internalLimit = rawLimit === 1000 ? Number.MAX_SAFE_INTEGER : rawLimit;
 
-      // Parse comma-separated role names into array
       const excludeRoleNamesArr = excludeRoleNames
         ? excludeRoleNames.split(",").map(s => s.trim()).filter(Boolean)
-        : undefined;
+        : [];
+
+      // RBAC filtering
+      const currentUserRoles = await UserModel.getUserRolesAndWarehouses(ctx.user!.sub);
+      const isSuperadmin = currentUserRoles.roleNames.includes('superadmin');
+      const isAdmin = currentUserRoles.roleNames.includes('admin');
+      const isManager = currentUserRoles.roleNames.includes('manager');
+      const isBranchHead = currentUserRoles.roleNames.includes('branch_head');
+      const isWarehouseHead = currentUserRoles.roleNames.includes('warehouse_head');
+
+      let allowedWarehouseIds: string[] | undefined = undefined;
+      const rbacExcludeRoleNames = [...excludeRoleNamesArr];
+
+      if (isSuperadmin) {
+        // Can see all
+      } else if (isAdmin) {
+        rbacExcludeRoleNames.push('superadmin');
+      } else if (isManager) {
+        rbacExcludeRoleNames.push('superadmin', 'admin');
+      } else if (isBranchHead) {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head');
+        allowedWarehouseIds = currentUserRoles.warehouseIds;
+      } else if (isWarehouseHead) {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head', 'warehouse_head');
+        allowedWarehouseIds = currentUserRoles.warehouseIds;
+      } else {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head', 'warehouse_head', 'staff');
+        allowedWarehouseIds = []; // No access
+      }
+
+      const finalExcludeRoles = Array.from(new Set(rbacExcludeRoleNames));
 
       const [totalRecord, records] = await Promise.all([
-        UserModel.countAll({ searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames: excludeRoleNamesArr, excludeMappedUsers }),
+        UserModel.countAll({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames: finalExcludeRoles, excludeMappedUsers, allowedWarehouseIds }),
         UserModel.findAll({
           page,
           limit: internalLimit,
@@ -177,8 +206,10 @@ export class UserController {
           status,
           roleId,
           roleCode,
-          excludeRoleNames: excludeRoleNamesArr,
+          warehouseId,
+          excludeRoleNames: finalExcludeRoles,
           excludeMappedUsers,
+          allowedWarehouseIds,
         }),
       ]);
 
@@ -193,6 +224,7 @@ export class UserController {
           ...(status !== undefined ? { status: String(status) } : {}),
           ...(roleId ? { roleId } : {}),
           ...(roleCode ? { roleCode } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
           ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {})
         });
         return `${baseUrl}?${params.toString()}`;

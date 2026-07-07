@@ -6,10 +6,10 @@ import { permissionGuard } from "../permission/permission.middleware";
 export const customerRoutes = new Elysia({ prefix: "/api/customers" })
   .use(authMiddleware)
   .get("/", CustomerController.getAll, {
-    beforeHandle: [permissionGuard("customer", "canView")],
+    beforeHandle: [permissionGuard("customer", ["canView", "canAccessApi"])],
   })
   .get("/:id", CustomerController.getById, {
-    beforeHandle: [permissionGuard("customer", "canView")],
+    beforeHandle: [permissionGuard("customer", ["canView", "canAccessApi"])],
   })
   .post("/", CustomerController.create, {
     beforeHandle: [permissionGuard("customer", "canCreate")],

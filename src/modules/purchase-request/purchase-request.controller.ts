@@ -68,8 +68,8 @@ export class PurchaseRequestController {
       // ─────────────────────────────────────────────────────────────────────────
 
       const [totalRecord, records] = await Promise.all([
-        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds }),
-        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds }),
+        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId }),
+        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;
@@ -344,12 +344,13 @@ export class PurchaseRequestController {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase request not found", 404);
       }
-      if (pr.status !== 0) {
+      if (pr.status === 2 || pr.status === 4) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Only draft purchase requests can be deleted", 400);
+        return failedResponse(correlationId, "Approved or already closed purchase requests cannot be cancelled", 400);
       }
 
-      const deleted = await PurchaseRequestModel.softDelete(id);
+      const userId = ctx.user?.sub;
+      const deleted = await PurchaseRequestModel.softDelete(id, userId);
 
       await logActivity({
         userId: ctx.user?.sub,

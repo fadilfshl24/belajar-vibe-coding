@@ -24,6 +24,7 @@ export class PermissionModel {
         canCreate: roleMenuPermissions.canCreate,
         canUpdate: roleMenuPermissions.canUpdate,
         canDelete: roleMenuPermissions.canDelete,
+        canAccessApi: roleMenuPermissions.canAccessApi,
       })
       .from(roleMenuPermissions)
       .innerJoin(roles, eq(roleMenuPermissions.roleId, roles.id))
@@ -51,6 +52,7 @@ export class PermissionModel {
         canCreate: roleMenuPermissions.canCreate,
         canUpdate: roleMenuPermissions.canUpdate,
         canDelete: roleMenuPermissions.canDelete,
+        canAccessApi: roleMenuPermissions.canAccessApi,
       })
       .from(roleMenuPermissions)
       .innerJoin(roles, eq(roleMenuPermissions.roleId, roles.id))
@@ -118,6 +120,7 @@ export class PermissionModel {
           canCreate: payload.canCreate,
           canUpdate: payload.canUpdate,
           canDelete: payload.canDelete,
+          canAccessApi: payload.canAccessApi,
           updatedAt: new Date(),
           updatedBy,
         })
@@ -130,6 +133,7 @@ export class PermissionModel {
         canCreate: payload.canCreate,
         canUpdate: payload.canUpdate,
         canDelete: payload.canDelete,
+        canAccessApi: payload.canAccessApi,
         createdBy: updatedBy,
       });
     }
@@ -154,7 +158,7 @@ export class PermissionModel {
   static async checkAccess(
     roleId: string,
     menuCode: string,
-    action: "canView" | "canCreate" | "canUpdate" | "canDelete"
+    action: "canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi" | Array<"canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi">
   ): Promise<boolean> {
     const result = await db
       .select({
@@ -162,6 +166,7 @@ export class PermissionModel {
         canCreate: roleMenuPermissions.canCreate,
         canUpdate: roleMenuPermissions.canUpdate,
         canDelete: roleMenuPermissions.canDelete,
+        canAccessApi: roleMenuPermissions.canAccessApi,
       })
       .from(roleMenuPermissions)
       .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
@@ -176,6 +181,10 @@ export class PermissionModel {
 
     const perm = result[0];
     if (!perm) return false;
+    
+    if (Array.isArray(action)) {
+      return action.some(a => perm[a] === true);
+    }
     return perm[action] === true;
   }
 
@@ -186,7 +195,7 @@ export class PermissionModel {
   static async checkAccessByUserId(
     userId: string,
     menuCode: string,
-    action: "canView" | "canCreate" | "canUpdate" | "canDelete"
+    action: "canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi" | Array<"canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi">
   ): Promise<boolean> {
     const userRolesList = await db
       .select({ roleId: userWarehouseRoles.roleId })
@@ -202,6 +211,7 @@ export class PermissionModel {
         canCreate: roleMenuPermissions.canCreate,
         canUpdate: roleMenuPermissions.canUpdate,
         canDelete: roleMenuPermissions.canDelete,
+        canAccessApi: roleMenuPermissions.canAccessApi,
       })
       .from(roleMenuPermissions)
       .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
@@ -213,6 +223,9 @@ export class PermissionModel {
         )
       );
 
+    if (Array.isArray(action)) {
+      return result.some(r => action.some(a => r[a] === true));
+    }
     return result.some(r => r[action] === true);
   }
 

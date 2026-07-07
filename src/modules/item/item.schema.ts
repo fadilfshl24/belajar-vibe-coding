@@ -107,3 +107,16 @@ export type ItemRecord = typeof items.$inferSelect;
 export type ItemInsert = typeof items.$inferInsert;
 export type ItemPackageDetailRecord = typeof itemPackageDetails.$inferSelect;
 export type ItemPackageDetailInsert = typeof itemPackageDetails.$inferInsert;
+
+import { relations } from "drizzle-orm";
+
+export const itemsRelations = relations(items, ({ one }) => ({
+  category: one(itemCategories, {
+    fields: [items.categoryId],
+    references: [itemCategories.id],
+  }),
+  uom: one(uoms, {
+    fields: [items.uomId],
+    references: [uoms.id],
+  }),
+}));

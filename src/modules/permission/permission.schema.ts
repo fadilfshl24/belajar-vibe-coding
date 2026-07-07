@@ -29,6 +29,7 @@ export const roleMenuPermissions = pgTable(
     canCreate: boolean("can_create").notNull().default(false),
     canUpdate: boolean("can_update").notNull().default(false),
     canDelete: boolean("can_delete").notNull().default(false),
+    canAccessApi: boolean("can_access_api").notNull().default(false),
     ...auditColumns,
   },
   (t) => [

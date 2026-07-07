@@ -20,6 +20,12 @@ export const purchaseOrderRoutes = new Elysia({ prefix: "/api/purchase-orders" }
   .patch("/:id/status", PurchaseOrderController.updateStatus, {
     beforeHandle: [permissionGuard("purchase_order", "canUpdate")],
   })
+  .post("/:id/submit", PurchaseOrderController.submit, {
+    beforeHandle: [permissionGuard("purchase_order", "canUpdate")],
+  })
+  .patch("/:id/approval", PurchaseOrderController.approveOrReject, {
+    beforeHandle: [permissionGuard("purchase_order", "canUpdate")],
+  })
   .post("/:id/receive", PurchaseOrderController.receiveGoods, {
     beforeHandle: [permissionGuard("purchase_order", "canUpdate")],
   })

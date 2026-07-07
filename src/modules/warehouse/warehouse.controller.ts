@@ -4,13 +4,16 @@ import { WarehouseModel, WarehouseHeadModel } from "./warehouse.model";
 import { parseCreateWarehouseInput, parseUpdateWarehouseInput, parseWarehouseListQuery, parseAssignWarehouseHeadInput } from "./warehouse.validation";
 import { logActivity } from "../../core/utils/activityLogger";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { db } from "../../core/db";
+import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
 const MODULE_TYPE = "WAREHOUSE"
 
 export class WarehouseController {
-  static async getAll(ctx: Context) {
+  static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
@@ -23,9 +26,40 @@ export class WarehouseController {
       const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
+      let allowedWarehouseIds: string[] | undefined = undefined;
+
+      if (ctx.user) {
+        const userId = ctx.user.sub;
+        const userRoles = await db
+          .select({ roleName: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(
+            and(
+              eq(userWarehouseRoles.userId, userId),
+              isNull(userWarehouseRoles.deletedAt),
+              isNull(roles.deletedAt)
+            )
+          );
+
+        const roleNames = userRoles.map((ur) => ur.roleName);
+        if (roleNames.includes("warehouse_head") || roleNames.includes("branch_head") || roleNames.includes("staff")) {
+          const mappings = await db
+            .select({ id: userWarehouseMappings.warehouseId })
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.isActive, true)
+              )
+            );
+          allowedWarehouseIds = mappings.map(m => m.id);
+        }
+      }
+
       const [totalRecord, records] = await Promise.all([
-        WarehouseModel.countAll({ searchTerm, filterColumn, isActive, excludeHasHead }),
-        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead }),
+        WarehouseModel.countAll({ searchTerm, filterColumn, isActive, excludeHasHead, allowedWarehouseIds }),
+        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead, allowedWarehouseIds }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);

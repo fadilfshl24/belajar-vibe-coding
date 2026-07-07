@@ -46,6 +46,7 @@ const listQuerySchema = z.object({
   status: z.coerce.number().int().min(0).max(1).optional(),
   roleId: z.string().uuid().optional(),
   roleCode: z.string().optional(),
+  warehouseId: z.string().uuid().optional(),
   // Exclude users by role name (comma-separated), e.g. "superadmin,admin"
   excludeRoleNames: z.string().optional(),
   // Exclude users that already have active warehouse mappings

@@ -5,6 +5,7 @@ import {
   parseUpdatePOInput,
   parsePOListQuery,
   parsePatchPOStatus,
+  parsePatchPOApproval,
   parseReceiveGoodsInput,
   type CreatePOInput,
   type UpdatePOInput,
@@ -134,6 +135,54 @@ export class PurchaseOrderController {
     }
   }
 
+  static async submit(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = (ctx.params as Record<string, string>).id;
+      const updated = await PurchaseOrderModel.submit(id ?? "", ctx.user?.sub ?? "");
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "SUBMIT_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} submit PO "${updated?.code}" for approval`,
+      });
+
+      return successResponse(correlationId, "Purchase order submitted for approval", { record: updated });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to submit purchase order", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  static async approveOrReject(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = (ctx.params as Record<string, string>).id;
+      const parsed = parsePatchPOApproval(ctx.body);
+      if (!parsed.success) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
+      }
+
+      const updated = await PurchaseOrderModel.patchApprovalStatus(id ?? "", parsed.data, ctx.user?.sub ?? "");
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "APPROVE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} ${parsed.data.action} PO "${updated?.code}"`,
+      });
+
+      return successResponse(correlationId, `Purchase order ${parsed.data.action}d successfully`, { record: updated });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to process approval", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
   static async updateStatus(ctx: Context & { user?: JwtPayload }) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -184,9 +233,9 @@ export class PurchaseOrderController {
         return failedResponse(correlationId, "Purchase order not found", 404);
       }
       
-      if (po.status === 0 || po.status === 3 || po.status === 4) {
+      if (po.status !== 4 && po.status !== 5) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Cannot receive goods for this PO status", 400);
+        return failedResponse(correlationId, "Cannot receive goods. PO must be Sent or Partially Received.", 400);
       }
 
       const updated = await PurchaseOrderModel.receiveGoods(id ?? "", parsed.data.items);
@@ -215,12 +264,13 @@ export class PurchaseOrderController {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
       }
-      if (po.status !== 0) {
+      if (po.status === 2 || po.status === 4 || po.status === 5 || po.status === 6 || po.status === 7) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Only draft purchase orders can be deleted", 400);
+        return failedResponse(correlationId, "Approved, Sent, Received or already Cancelled purchase orders cannot be cancelled", 400);
       }
 
-      const deleted = await PurchaseOrderModel.softDelete(id ?? "");
+      const userId = ctx.user?.sub;
+      const deleted = await PurchaseOrderModel.softDelete(id ?? "", userId);
 
       await logActivity({
         userId: ctx.user?.sub,

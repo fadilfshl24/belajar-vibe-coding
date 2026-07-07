@@ -51,6 +51,43 @@ export class AuthController {
         return failedResponse(correlationId, "Data not found!", 400, "Password is incorrect");
       }
 
+      const userRoles = await db
+        .select({ roleName: roles.code })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, user.id),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const roleNames = userRoles.map((ur) => ur.roleName);
+      const restrictedRoles = ['staff', 'warehouse_head', 'branch_head'];
+      const hasRestrictedRole = roleNames.some(r => restrictedRoles.includes(r));
+
+      if (hasRestrictedRole) {
+        const mappings = await db
+          .select({ id: userWarehouseMappings.warehouseId })
+          .from(userWarehouseMappings)
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, user.id),
+              eq(userWarehouseMappings.isActive, true)
+            )
+          );
+          
+        if (mappings.length === 0) {
+          return failedResponse(
+            correlationId, 
+            "Login failed!", 
+            403, 
+            "Akun Anda belum di-mapping ke gudang/cabang manapun. Silakan hubungi Administrator."
+          );
+        }
+      }
+
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
         (ctx.headers["x-forwarded-for"] as string | undefined) ??
@@ -290,6 +327,43 @@ export class AuthController {
         await OauthModel.linkAccount({ userId, provider, providerUserId, providerEmail: email, accessToken });
       }
 
+      const userRoles = await db
+        .select({ roleName: roles.code })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, userId),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const roleNames = userRoles.map((ur) => ur.roleName);
+      const restrictedRoles = ['staff', 'warehouse_head', 'branch_head'];
+      const hasRestrictedRole = roleNames.some(r => restrictedRoles.includes(r));
+
+      if (hasRestrictedRole) {
+        const mappings = await db
+          .select({ id: userWarehouseMappings.warehouseId })
+          .from(userWarehouseMappings)
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, userId),
+              eq(userWarehouseMappings.isActive, true)
+            )
+          );
+          
+        if (mappings.length === 0) {
+          return failedResponse(
+            correlationId, 
+            "OAuth Login failed!", 
+            403, 
+            "Akun Anda belum di-mapping ke gudang/cabang manapun. Silakan hubungi Administrator."
+          );
+        }
+      }
+
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
         (ctx.headers["x-forwarded-for"] as string | undefined) ??
@@ -373,6 +447,7 @@ export class AuthController {
             canCreate: roleMenuPermissions.canCreate,
             canUpdate: roleMenuPermissions.canUpdate,
             canDelete: roleMenuPermissions.canDelete,
+            canAccessApi: roleMenuPermissions.canAccessApi,
           })
           .from(roleMenuPermissions)
           .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
@@ -392,6 +467,7 @@ export class AuthController {
         canCreate: boolean;
         canUpdate: boolean;
         canDelete: boolean;
+        canAccessApi: boolean;
       }> = {};
 
       for (const p of permissionsList) {
@@ -403,12 +479,14 @@ export class AuthController {
             canCreate: p.canCreate,
             canUpdate: p.canUpdate,
             canDelete: p.canDelete,
+            canAccessApi: p.canAccessApi,
           };
         } else {
           existing.canView = existing.canView || p.canView;
           existing.canCreate = existing.canCreate || p.canCreate;
           existing.canUpdate = existing.canUpdate || p.canUpdate;
           existing.canDelete = existing.canDelete || p.canDelete;
+          existing.canAccessApi = existing.canAccessApi || p.canAccessApi;
         }
       }
 

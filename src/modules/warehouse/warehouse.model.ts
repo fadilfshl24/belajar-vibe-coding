@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, isNull, or, notInArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or, notInArray, inArray } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { warehouses, warehouseHeads } from "./warehouse.schema";
@@ -38,11 +38,18 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; isActive?: boolean; excludeHasHead?: boolean }) {
-  const { filterColumn, searchTerm, isActive, excludeHasHead } = params;
+function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; isActive?: boolean; excludeHasHead?: boolean; allowedWarehouseIds?: string[] }) {
+  const { filterColumn, searchTerm, isActive, excludeHasHead, allowedWarehouseIds } = params;
   let conds = isNull(warehouses.deletedAt);
   if (isActive !== undefined) {
     conds = and(conds, eq(warehouses.isActive, isActive))!;
+  }
+  if (allowedWarehouseIds !== undefined) {
+    if (allowedWarehouseIds.length > 0) {
+      conds = and(conds, inArray(warehouses.id, allowedWarehouseIds))!;
+    } else {
+      conds = and(conds, eq(warehouses.id, "00000000-0000-0000-0000-000000000000"))!;
+    }
   }
   if (searchTerm) {
     const term = searchTerm.trim();
@@ -71,10 +78,11 @@ export class WarehouseModel {
     filterColumn?: string;
     isActive?: boolean;
     excludeHasHead?: boolean;
+    allowedWarehouseIds?: string[];
   }): Promise<WarehouseDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead, allowedWarehouseIds } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, isActive, excludeHasHead });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, isActive, excludeHasHead, allowedWarehouseIds });
     const offset = (page - 1) * limit;
 
     const result = await db
@@ -105,7 +113,7 @@ export class WarehouseModel {
     });
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean; excludeHasHead?: boolean }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; isActive?: boolean; excludeHasHead?: boolean; allowedWarehouseIds?: string[] }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(warehouses).where(whereClause);
     return result[0]?.total ?? 0;

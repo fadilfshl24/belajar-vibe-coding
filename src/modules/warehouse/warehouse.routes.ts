@@ -6,13 +6,13 @@ import { permissionGuard } from "../permission/permission.middleware";
 export const warehouseRoutes = new Elysia({ prefix: "/api/warehouses" })
   .use(authMiddleware)
   // Standard CRUD
-  .get("/", WarehouseController.getAll, { beforeHandle: [permissionGuard("gudang", "canView")] })
-  .get("/:id", WarehouseController.getById, { beforeHandle: [permissionGuard("gudang", "canView")] })
+  .get("/", WarehouseController.getAll, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] })
+  .get("/:id", WarehouseController.getById, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] })
   .post("/", WarehouseController.create, { beforeHandle: [permissionGuard("gudang", "canCreate")] })
   .put("/:id", WarehouseController.update, { beforeHandle: [permissionGuard("gudang", "canUpdate")] })
   .delete("/:id", WarehouseController.remove, { beforeHandle: [permissionGuard("gudang", "canDelete")] })
   // Warehouse Heads sub-routes
-  .get("/:id/heads", WarehouseHeadController.getByWarehouse, { beforeHandle: [permissionGuard("gudang", "canView")] })
+  .get("/:id/heads", WarehouseHeadController.getByWarehouse, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] })
   .post("/:id/heads", WarehouseHeadController.assign, { beforeHandle: [permissionGuard("gudang", "canUpdate")] })
   .delete("/:id/heads/:headId", WarehouseHeadController.unassign, { beforeHandle: [permissionGuard("gudang", "canUpdate")] });
 
@@ -21,7 +21,7 @@ export const warehouseRoutes = new Elysia({ prefix: "/api/warehouses" })
  */
 export const warehouseRegionRoutes = new Elysia({ prefix: "/api/warehouse-regions" })
   .use(authMiddleware)
-  .get("/provinces", WarehouseRegionController.getProvinces, { beforeHandle: [permissionGuard("gudang", "canView")] })
-  .get("/cities", WarehouseRegionController.getCitiesByProvince, { beforeHandle: [permissionGuard("gudang", "canView")] })
-  .get("/warehouses", WarehouseRegionController.getByRegion, { beforeHandle: [permissionGuard("gudang", "canView")] });
+  .get("/provinces", WarehouseRegionController.getProvinces, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] })
+  .get("/cities", WarehouseRegionController.getCitiesByProvince, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] })
+  .get("/warehouses", WarehouseRegionController.getByRegion, { beforeHandle: [permissionGuard("gudang", ["canView", "canAccessApi"])] });
 

@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, isNull, notInArray, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, notInArray, or, inArray } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { users } from "./user.schema";
@@ -43,9 +43,30 @@ function buildFilterCondition(params: {
   status?: number;
   roleId?: string;
   roleCode?: string;
+  warehouseId?: string;
+  allowedWarehouseIds?: string[];
 }) {
-  const { searchTerm, filterColumn, status, roleId, roleCode } = params;
+  const { searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds } = params;
   let conds = isNull(users.deletedAt);
+
+  if (allowedWarehouseIds) {
+    if (allowedWarehouseIds.length > 0) {
+      const mappedSq = db
+        .select({ id: userWarehouseMappings.userId })
+        .from(userWarehouseMappings)
+        .where(
+          and(
+            inArray(userWarehouseMappings.warehouseId, allowedWarehouseIds),
+            eq(userWarehouseMappings.isActive, true),
+            isNull(userWarehouseMappings.deletedAt)
+          )
+        );
+      conds = and(conds, or(inArray(userWarehouseRoles.warehouseId, allowedWarehouseIds), inArray(users.id, mappedSq)))!;
+    } else {
+      // No access
+      conds = and(conds, eq(users.id, "00000000-0000-0000-0000-000000000000"))!;
+    }
+  }
 
   if (status !== undefined) {
     conds = and(conds, eq(users.status, status as 0 | 1))!;
@@ -57,6 +78,20 @@ function buildFilterCondition(params: {
 
   if (roleCode) {
     conds = and(conds, eq(roles.code, roleCode))!;
+  }
+
+  if (warehouseId) {
+    const mappedSq = db
+      .select({ id: userWarehouseMappings.userId })
+      .from(userWarehouseMappings)
+      .where(
+        and(
+          eq(userWarehouseMappings.warehouseId, warehouseId),
+          eq(userWarehouseMappings.isActive, true),
+          isNull(userWarehouseMappings.deletedAt)
+        )
+      );
+    conds = and(conds, or(eq(userWarehouseRoles.warehouseId, warehouseId), inArray(users.id, mappedSq)))!;
   }
 
   if (searchTerm) {
@@ -119,17 +154,51 @@ export class UserModel {
     return toUserDTO(result[0]!.user, result[0]!.role?.id ? result[0]!.role : null);
   }
 
+  static async getUserRolesAndWarehouses(userId: string) {
+    const userRoles = await db
+      .select({
+        roleName: roles.code,
+      })
+      .from(userWarehouseRoles)
+      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .where(
+        and(
+          eq(userWarehouseRoles.userId, userId),
+          isNull(userWarehouseRoles.deletedAt),
+          isNull(roles.deletedAt)
+        )
+      );
+
+    const mappings = await db
+      .select({ warehouseId: userWarehouseMappings.warehouseId })
+      .from(userWarehouseMappings)
+      .where(
+        and(
+          eq(userWarehouseMappings.userId, userId),
+          eq(userWarehouseMappings.isActive, true),
+          isNull(userWarehouseMappings.deletedAt)
+        )
+      );
+
+    return {
+      roleNames: userRoles.map(ur => ur.roleName),
+      warehouseIds: mappings.map(m => m.warehouseId),
+    };
+  }
+
   static async countAll(params: {
     searchTerm?: string;
     filterColumn?: string;
     status?: number;
     roleId?: string;
     roleCode?: string;
+    warehouseId?: string;
     excludeRoleNames?: string[];
     excludeMappedUsers?: boolean;
+    allowedWarehouseIds?: string[];
   }): Promise<number> {
-    const { searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames, excludeMappedUsers } = params;
-    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode });
+    const { searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers, allowedWarehouseIds } = params;
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds });
 
     // Exclude by role names
     if (excludeRoleNames && excludeRoleNames.length > 0) {
@@ -162,12 +231,14 @@ export class UserModel {
     status?: number;
     roleId?: string;
     roleCode?: string;
+    warehouseId?: string;
     excludeRoleNames?: string[];
     excludeMappedUsers?: boolean;
+    allowedWarehouseIds?: string[];
   }): Promise<UserDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, excludeRoleNames, excludeMappedUsers } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers, allowedWarehouseIds } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode });
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds });
     const offset = (page - 1) * limit;
 
     if (excludeRoleNames && excludeRoleNames.length > 0) {
