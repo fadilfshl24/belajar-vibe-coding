@@ -1,11 +1,15 @@
 import { z } from "zod";
 
 const createRoleSchema = z.object({
+  code: z
+    .string()
+    .min(2, "Code must be at least 2 characters")
+    .max(50)
+    .regex(/^[a-z_]+$/, "Code must be lowercase with underscores only (e.g., warehouse_head)"),
   name: z
     .string()
     .min(2, "Name must be at least 2 characters")
-    .max(255)
-    .regex(/^[a-z_]+$/, "Name must be lowercase with underscores only (e.g., warehouse_head)"),
+    .max(255),
   description: z.string().max(1000).optional(),
 });
 

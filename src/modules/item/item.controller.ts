@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = 'CATEGORY'
 
 export class ItemController {
   // ---------------------------------------------------------------------------
@@ -22,12 +23,12 @@ export class ItemController {
         return failedResponse(correlationId, "Invalid query params", 400, parsed.error.issues[0]?.message);
       }
 
-      const { page, limit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive } = parsed.data;
+      const { page, limit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
       const [totalRecord, records] = await Promise.all([
-        ItemModel.countAll({ searchTerm, filterColumn, itemType, categoryId, uomId, isActive }),
-        ItemModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive }),
+        ItemModel.countAll({ searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset }),
+        ItemModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, itemType, categoryId, uomId, isActive, isAsset }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);
@@ -42,6 +43,7 @@ export class ItemController {
           ...(categoryId ? { categoryId } : {}),
           ...(uomId ? { uomId } : {}),
           ...(isActive !== undefined ? { isActive: String(isActive) } : {}),
+          ...(isAsset !== undefined ? { isAsset: String(isAsset) } : {}),
           ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}),
         });
         return `${baseUrl}?${params.toString()}`;
@@ -119,10 +121,11 @@ export class ItemController {
         }
       }
 
-      const item = await ItemModel.create(parsed.data);
+      const item = await ItemModel.create(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Item "${item.name}" (${item.itemType}) dengan ID ${item.id}`,
       });
@@ -178,10 +181,11 @@ export class ItemController {
         }
       }
 
-      const updated = await ItemModel.update(id, parsed.data);
+      const updated = await ItemModel.update(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Item ID ${id}`,
       });
@@ -219,6 +223,7 @@ export class ItemController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Item ID ${id}`,
       });

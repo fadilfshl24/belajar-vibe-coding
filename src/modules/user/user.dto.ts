@@ -16,6 +16,7 @@ export interface UserDTO {
   roleId?: string | null;
   role?: {
     id: string;
+    code: string;
     name: string;
   } | null;
 }
@@ -23,7 +24,7 @@ export interface UserDTO {
 /**
  * Mengonversi UserRecord (dari DB) ke UserDTO (aman untuk dikirim ke client).
  */
-export function toUserDTO(record: UserRecord, role?: { id: string; name: string } | null): UserDTO {
+export function toUserDTO(record: UserRecord, role?: { id: string; code: string; name: string } | null): UserDTO {
   return {
     id: record.id,
     name: record.name,

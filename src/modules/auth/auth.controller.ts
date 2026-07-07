@@ -8,9 +8,10 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import { UserModel } from "../user";
 import { eq, and, isNull, asc, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
-import { roles, userWarehouseRoles } from "../role/role.schema";
+import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
 import { menus } from "../menu/menu.schema";
 import { roleMenuPermissions } from "../permission/permission.schema";
+import { warehouses } from "../warehouse/warehouse.schema";
 
 export class AuthController {
   // ---------------------------------------------------------------------------
@@ -48,6 +49,43 @@ export class AuthController {
         : false;
       if (!passwordMatch) {
         return failedResponse(correlationId, "Data not found!", 400, "Password is incorrect");
+      }
+
+      const userRoles = await db
+        .select({ roleName: roles.code })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, user.id),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const roleNames = userRoles.map((ur) => ur.roleName);
+      const restrictedRoles = ['staff', 'warehouse_head', 'branch_head'];
+      const hasRestrictedRole = roleNames.some(r => restrictedRoles.includes(r));
+
+      if (hasRestrictedRole) {
+        const mappings = await db
+          .select({ id: userWarehouseMappings.warehouseId })
+          .from(userWarehouseMappings)
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, user.id),
+              eq(userWarehouseMappings.isActive, true)
+            )
+          );
+          
+        if (mappings.length === 0) {
+          return failedResponse(
+            correlationId, 
+            "Login failed!", 
+            403, 
+            "Akun Anda belum di-mapping ke gudang/cabang manapun. Silakan hubungi Administrator."
+          );
+        }
       }
 
       const userAgent = ctx.headers["user-agent"];
@@ -289,6 +327,43 @@ export class AuthController {
         await OauthModel.linkAccount({ userId, provider, providerUserId, providerEmail: email, accessToken });
       }
 
+      const userRoles = await db
+        .select({ roleName: roles.code })
+        .from(userWarehouseRoles)
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseRoles.userId, userId),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt)
+          )
+        );
+
+      const roleNames = userRoles.map((ur) => ur.roleName);
+      const restrictedRoles = ['staff', 'warehouse_head', 'branch_head'];
+      const hasRestrictedRole = roleNames.some(r => restrictedRoles.includes(r));
+
+      if (hasRestrictedRole) {
+        const mappings = await db
+          .select({ id: userWarehouseMappings.warehouseId })
+          .from(userWarehouseMappings)
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, userId),
+              eq(userWarehouseMappings.isActive, true)
+            )
+          );
+          
+        if (mappings.length === 0) {
+          return failedResponse(
+            correlationId, 
+            "OAuth Login failed!", 
+            403, 
+            "Akun Anda belum di-mapping ke gudang/cabang manapun. Silakan hubungi Administrator."
+          );
+        }
+      }
+
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
         (ctx.headers["x-forwarded-for"] as string | undefined) ??
@@ -344,7 +419,7 @@ export class AuthController {
         .select({
           roleId: userWarehouseRoles.roleId,
           warehouseId: userWarehouseRoles.warehouseId,
-          roleName: roles.name,
+          roleName: roles.code,
         })
         .from(userWarehouseRoles)
         .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
@@ -372,6 +447,7 @@ export class AuthController {
             canCreate: roleMenuPermissions.canCreate,
             canUpdate: roleMenuPermissions.canUpdate,
             canDelete: roleMenuPermissions.canDelete,
+            canAccessApi: roleMenuPermissions.canAccessApi,
           })
           .from(roleMenuPermissions)
           .innerJoin(menus, eq(roleMenuPermissions.menuId, menus.id))
@@ -391,6 +467,7 @@ export class AuthController {
         canCreate: boolean;
         canUpdate: boolean;
         canDelete: boolean;
+        canAccessApi: boolean;
       }> = {};
 
       for (const p of permissionsList) {
@@ -402,12 +479,14 @@ export class AuthController {
             canCreate: p.canCreate,
             canUpdate: p.canUpdate,
             canDelete: p.canDelete,
+            canAccessApi: p.canAccessApi,
           };
         } else {
           existing.canView = existing.canView || p.canView;
           existing.canCreate = existing.canCreate || p.canCreate;
           existing.canUpdate = existing.canUpdate || p.canUpdate;
           existing.canDelete = existing.canDelete || p.canDelete;
+          existing.canAccessApi = existing.canAccessApi || p.canAccessApi;
         }
       }
 
@@ -489,6 +568,29 @@ export class AuthController {
         item.children.sort(sortFn);
       }
 
+      const isSuperadmin = userRoles.some(r => r.roleName === "superadmin");
+      let mappedWarehouses: { id: string; code: string; name: string }[] = [];
+      
+      if (isSuperadmin) {
+        mappedWarehouses = await db
+          .select({ id: warehouses.id, code: warehouses.code, name: warehouses.name })
+          .from(warehouses)
+          .where(and(eq(warehouses.isActive, true), isNull(warehouses.deletedAt)));
+      } else {
+        mappedWarehouses = await db
+          .select({ id: warehouses.id, code: warehouses.code, name: warehouses.name })
+          .from(userWarehouseMappings)
+          .innerJoin(warehouses, eq(userWarehouseMappings.warehouseId, warehouses.id))
+          .where(
+            and(
+              eq(userWarehouseMappings.userId, userId),
+              eq(userWarehouseMappings.isActive, true),
+              eq(warehouses.isActive, true),
+              isNull(warehouses.deletedAt)
+            )
+          );
+      }
+
       return successResponse(correlationId, "User details fetched successfully", {
         user: {
           id: user.id,
@@ -496,8 +598,10 @@ export class AuthController {
           email: user.email,
           status: user.status,
           roles: userRoles.map((ur) => ur.roleName),
+          roleWarehouseMappings: userRoles.map((ur) => ({ roleName: ur.roleName, warehouseId: ur.warehouseId })),
           permissions: Object.values(mergedPermissions),
           menus: rootMenus,
+          mappedWarehouses,
         },
       });
     } catch (err: unknown) {

@@ -2,6 +2,7 @@ import type { RoleRecord } from "./role.schema";
 
 export interface RoleDTO {
   id: string;
+  code: string;
   name: string;
   description: string | null;
   createdAt: Date;
@@ -11,6 +12,7 @@ export interface RoleDTO {
 export function toRoleDTO(record: RoleRecord): RoleDTO {
   return {
     id: record.id,
+    code: record.code,
     name: record.name,
     description: record.description ?? null,
     createdAt: record.createdAt,

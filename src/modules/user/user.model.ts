@@ -1,10 +1,10 @@
-import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, notInArray, or, inArray } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { users } from "./user.schema";
 import { toUserDTO, type UserDTO } from "./user.dto";
 import type { UserRecord } from "./user.schema";
-import { roles, userWarehouseRoles } from "../role/role.schema";
+import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
 
 // ---------------------------------------------------------------------------
@@ -42,9 +42,31 @@ function buildFilterCondition(params: {
   filterColumn?: string;
   status?: number;
   roleId?: string;
+  roleCode?: string;
+  warehouseId?: string;
+  allowedWarehouseIds?: string[];
 }) {
-  const { searchTerm, filterColumn, status, roleId } = params;
+  const { searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds } = params;
   let conds = isNull(users.deletedAt);
+
+  if (allowedWarehouseIds) {
+    if (allowedWarehouseIds.length > 0) {
+      const mappedSq = db
+        .select({ id: userWarehouseMappings.userId })
+        .from(userWarehouseMappings)
+        .where(
+          and(
+            inArray(userWarehouseMappings.warehouseId, allowedWarehouseIds),
+            eq(userWarehouseMappings.isActive, true),
+            isNull(userWarehouseMappings.deletedAt)
+          )
+        );
+      conds = and(conds, or(inArray(userWarehouseRoles.warehouseId, allowedWarehouseIds), inArray(users.id, mappedSq)))!;
+    } else {
+      // No access
+      conds = and(conds, eq(users.id, "00000000-0000-0000-0000-000000000000"))!;
+    }
+  }
 
   if (status !== undefined) {
     conds = and(conds, eq(users.status, status as 0 | 1))!;
@@ -52,6 +74,24 @@ function buildFilterCondition(params: {
 
   if (roleId) {
     conds = and(conds, eq(userWarehouseRoles.roleId, roleId))!;
+  }
+
+  if (roleCode) {
+    conds = and(conds, eq(roles.code, roleCode))!;
+  }
+
+  if (warehouseId) {
+    const mappedSq = db
+      .select({ id: userWarehouseMappings.userId })
+      .from(userWarehouseMappings)
+      .where(
+        and(
+          eq(userWarehouseMappings.warehouseId, warehouseId),
+          eq(userWarehouseMappings.isActive, true),
+          isNull(userWarehouseMappings.deletedAt)
+        )
+      );
+    conds = and(conds, or(eq(userWarehouseRoles.warehouseId, warehouseId), inArray(users.id, mappedSq)))!;
   }
 
   if (searchTerm) {
@@ -67,6 +107,17 @@ function buildFilterCondition(params: {
     }
   }
   return conds;
+}
+
+/**
+ * Ambil daftar userId yang sudah memiliki mapping aktif di user_warehouse_mappings
+ */
+async function getMappedUserIds(): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: userWarehouseMappings.userId })
+    .from(userWarehouseMappings)
+    .where(and(eq(userWarehouseMappings.isActive, true), isNull(userWarehouseMappings.deletedAt)));
+  return rows.map(r => r.userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +140,7 @@ export class UserModel {
         user: users,
         role: {
           id: roles.id,
+          code: roles.code,
           name: roles.name,
         }
       })
@@ -102,19 +154,71 @@ export class UserModel {
     return toUserDTO(result[0]!.user, result[0]!.role?.id ? result[0]!.role : null);
   }
 
+  static async getUserRolesAndWarehouses(userId: string) {
+    const userRoles = await db
+      .select({
+        roleName: roles.code,
+      })
+      .from(userWarehouseRoles)
+      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .where(
+        and(
+          eq(userWarehouseRoles.userId, userId),
+          isNull(userWarehouseRoles.deletedAt),
+          isNull(roles.deletedAt)
+        )
+      );
+
+    const mappings = await db
+      .select({ warehouseId: userWarehouseMappings.warehouseId })
+      .from(userWarehouseMappings)
+      .where(
+        and(
+          eq(userWarehouseMappings.userId, userId),
+          eq(userWarehouseMappings.isActive, true),
+          isNull(userWarehouseMappings.deletedAt)
+        )
+      );
+
+    return {
+      roleNames: userRoles.map(ur => ur.roleName),
+      warehouseIds: mappings.map(m => m.warehouseId),
+    };
+  }
+
   static async countAll(params: {
     searchTerm?: string;
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    roleCode?: string;
+    warehouseId?: string;
+    excludeRoleNames?: string[];
+    excludeMappedUsers?: boolean;
+    allowedWarehouseIds?: string[];
   }): Promise<number> {
-    const { searchTerm, filterColumn, status, roleId } = params;
-    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
-    let query = db.select({ total: count() }).from(users);
-    if (roleId) {
-      query = query.leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt))) as any;
+    const { searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers, allowedWarehouseIds } = params;
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds });
+
+    // Exclude by role names
+    if (excludeRoleNames && excludeRoleNames.length > 0) {
+      whereClause = and(whereClause, or(isNull(roles.code), notInArray(roles.code, excludeRoleNames)))!;
     }
-    const result = await query.where(whereClause);
+
+    // Exclude already-mapped users
+    if (excludeMappedUsers) {
+      const mappedIds = await getMappedUserIds();
+      if (mappedIds.length > 0) {
+        whereClause = and(whereClause, notInArray(users.id, mappedIds))!;
+      }
+    }
+
+    const result = await db
+      .select({ total: count() })
+      .from(users)
+      .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+      .leftJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+      .where(whereClause);
     return result[0]?.total ?? 0;
   }
 
@@ -126,17 +230,35 @@ export class UserModel {
     filterColumn?: string;
     status?: number;
     roleId?: string;
+    roleCode?: string;
+    warehouseId?: string;
+    excludeRoleNames?: string[];
+    excludeMappedUsers?: boolean;
+    allowedWarehouseIds?: string[];
   }): Promise<UserDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers, allowedWarehouseIds } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId });
+    let whereClause = buildFilterCondition({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, allowedWarehouseIds });
     const offset = (page - 1) * limit;
+
+    if (excludeRoleNames && excludeRoleNames.length > 0) {
+      whereClause = and(whereClause, or(isNull(roles.code), notInArray(roles.code, excludeRoleNames)))!;
+    }
+
+    // Exclude already-mapped users
+    if (excludeMappedUsers) {
+      const mappedIds = await getMappedUserIds();
+      if (mappedIds.length > 0) {
+        whereClause = and(whereClause, notInArray(users.id, mappedIds))!;
+      }
+    }
 
     const result = await db
       .select({
         user: users,
         role: {
           id: roles.id,
+          code: roles.code,
           name: roles.name,
         }
       })
@@ -151,13 +273,16 @@ export class UserModel {
     return result.map(row => toUserDTO(row.user, row.role?.id ? row.role : null));
   }
 
-  static async createUser(payload: {
-    name: string;
-    email: string;
-    password?: string;
-    roleId?: string;
-    isActive?: boolean;
-  }): Promise<UserRecord> {
+  static async createUser(
+    payload: {
+      name: string;
+      email: string;
+      password?: string;
+      roleId?: string;
+      isActive?: boolean;
+    },
+    userId?: string
+  ): Promise<UserRecord> {
     return await db.transaction(async (tx) => {
       const [inserted] = await tx
         .insert(users)
@@ -166,23 +291,22 @@ export class UserModel {
           email: payload.email.toLowerCase().trim(),
           password: payload.password || null,
           status: payload.isActive ?? true ? 1 : 0,
+          createdBy: userId,
+          updatedBy: userId,
         })
         .returning();
 
       if (!inserted) throw new Error("Insert did not return a record");
-
+      
       if (payload.roleId) {
-        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
-        const warehouseId = whs[0]?.id;
-        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
-
         await tx.insert(userWarehouseRoles).values({
           userId: inserted.id,
-          warehouseId,
           roleId: payload.roleId,
+          createdBy: userId,
+          updatedBy: userId,
         });
       }
-
+      
       return inserted;
     });
   }
@@ -195,7 +319,8 @@ export class UserModel {
       password?: string;
       roleId?: string | null;
       isActive?: boolean;
-    }
+    },
+    userId?: string
   ): Promise<UserDTO | undefined> {
     return await db.transaction(async (tx) => {
       const existing = await tx
@@ -207,6 +332,7 @@ export class UserModel {
 
       const updateData: any = {
         updatedAt: new Date(),
+        updatedBy: userId,
       };
       if (payload.name !== undefined) updateData.name = payload.name.trim();
       if (payload.email !== undefined) updateData.email = payload.email.toLowerCase().trim();
@@ -222,17 +348,14 @@ export class UserModel {
       if (!updated) return undefined;
 
       if (payload.roleId !== undefined) {
-        const whs = await tx.select().from(warehouses).where(eq(warehouses.code, "WH-001")).limit(1);
-        const warehouseId = whs[0]?.id;
-        if (!warehouseId) throw new Error("Default warehouse WH-001 not found");
-
         await tx.delete(userWarehouseRoles).where(eq(userWarehouseRoles.userId, id));
 
         if (payload.roleId) {
           await tx.insert(userWarehouseRoles).values({
             userId: id,
-            warehouseId,
             roleId: payload.roleId,
+            createdBy: userId,
+            updatedBy: userId,
           });
         }
       }
@@ -242,6 +365,7 @@ export class UserModel {
           user: users,
           role: {
             id: roles.id,
+            code: roles.code,
             name: roles.name,
           }
         })
@@ -256,10 +380,14 @@ export class UserModel {
     });
   }
 
-  static async updateStatus(id: string, status: number): Promise<UserDTO | undefined> {
+  static async updateStatus(id: string, status: number, userId?: string): Promise<UserDTO | undefined> {
     const result = await db
       .update(users)
-      .set({ status: status as 0 | 1, updatedAt: new Date() })
+      .set({ 
+        status: status as 0 | 1, 
+        updatedAt: new Date(),
+        updatedBy: userId
+      })
       .where(and(eq(users.id, id), isNull(users.deletedAt)))
       .returning();
 

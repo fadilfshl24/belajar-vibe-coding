@@ -9,6 +9,7 @@ import {
 } from "./platform.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class PlatformController {
   static async getAll(ctx: Context) {
@@ -55,7 +56,7 @@ export class PlatformController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const platform = await PlatformModel.findById(id);
+      const platform = await PlatformModel.findById(id ?? "");
       if (!platform) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found", 404);
@@ -83,7 +84,14 @@ export class PlatformController {
         return failedResponse(correlationId, "Platform code already exists", 409);
       }
 
-      const newPlatform = await PlatformModel.create(parsed.data as CreatePlatformInput);
+      const newPlatform = await PlatformModel.create(parsed.data as CreatePlatformInput, ctx.user?.sub);
+      
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_DATA",
+        module: "PLATFORM",
+        description: `User ${ctx.user?.email} menambahkan data Platform "${newPlatform.name}" dengan ID ${newPlatform.id}`,
+      });
       
       ctx.set.status = 201;
       return successResponse(correlationId, "Platform created successfully", { record: newPlatform });
@@ -112,11 +120,18 @@ export class PlatformController {
         }
       }
 
-      const updated = await PlatformModel.update(id, parsed.data as UpdatePlatformInput);
+      const updated = await PlatformModel.update(id ?? "", parsed.data as UpdatePlatformInput, ctx.user?.sub);
       if (!updated) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_DATA",
+        module: "PLATFORM",
+        description: `User ${ctx.user?.email} memperbarui data Platform "${updated.name}" dengan ID ${updated.id}`,
+      });
 
       return successResponse(correlationId, "Platform updated successfully", { record: updated });
     } catch (err: unknown) {
@@ -130,11 +145,19 @@ export class PlatformController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const deleted = await PlatformModel.softDelete(id);
+      const deleted = await PlatformModel.softDelete(id ?? "");
       if (!deleted) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Platform not found or already deleted", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_DATA",
+        module: "PLATFORM",
+        description: `User ${ctx.user?.email} menghapus data Platform dengan ID ${id}`,
+      });
+
       return successResponse(correlationId, "Platform deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

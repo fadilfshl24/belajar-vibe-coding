@@ -1,4 +1,4 @@
-import type { PurchaseRequestRecord, PurchaseRequestDetailRecord } from "./purchase-request.schema";
+import type { PurchaseRequestRecord, PurchaseRequestDetailRecord, PurchaseRequestApprovalRecord } from "./purchase-request.schema";
 import type { CustomerDTO } from "../customer/customer.dto";
 import type { WarehouseDTO } from "../warehouse/warehouse.dto";
 import type { UserDTO } from "../user/user.dto";
@@ -8,16 +8,21 @@ export type PRDetailDTO = Omit<PurchaseRequestDetailRecord, "deletedAt"> & {
   item?: ItemDTO;
 };
 
+export type PRApprovalDTO = Omit<PurchaseRequestApprovalRecord, "deletedAt"> & {
+  approver?: UserDTO | null;
+};
+
 export type PurchaseRequestDTO = Omit<PurchaseRequestRecord, "deletedAt"> & {
   details?: PRDetailDTO[];
   customer?: CustomerDTO | null;
   warehouse?: WarehouseDTO | null;
   requester?: UserDTO | null;
   approver?: UserDTO | null;
+  approvals?: PRApprovalDTO[];
 };
 
 export function toPurchaseRequestDTO(record: any): PurchaseRequestDTO {
-  const { deletedAt, details, customer, warehouse, requester, approver, ...dto } = record;
+  const { deletedAt, details, customer, warehouse, requester, approver, approvals, ...dto } = record;
   
   if (details) {
     dto.details = details.map((d: any) => {
@@ -45,6 +50,16 @@ export function toPurchaseRequestDTO(record: any): PurchaseRequestDTO {
   if (approver) {
     const { deletedAt: aDelAt, password, ...aDto } = approver;
     dto.approver = aDto;
+  }
+  if (approvals) {
+    dto.approvals = approvals.map((a: any) => {
+      const { deletedAt: apDelAt, approver: apVal, ...aDto } = a;
+      if (apVal) {
+        const { deletedAt: apvDelAt, password, ...apvDto } = apVal;
+        aDto.approver = apvDto;
+      }
+      return aDto;
+    });
   }
 
   return dto;

@@ -101,15 +101,20 @@ export class UomModel {
     return result[0];
   }
 
-  static async create(payload: {
-    name: string;
-    code: string;
-    description?: string;
-    isActive?: boolean;
-  }): Promise<UomRecord> {
+  static async create(
+    payload: {
+      name: string;
+      code: string;
+      description?: string;
+      isActive?: boolean;
+    },
+    userId?: string
+  ): Promise<UomRecord> {
     const result = await db.insert(uoms).values({
       ...payload,
       code: payload.code.toUpperCase(),
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
     if (!result[0]) throw new Error("Failed to create UOM");
     return result[0];
@@ -117,14 +122,16 @@ export class UomModel {
 
   static async update(
     id: string,
-    payload: { name?: string; code?: string; description?: string; isActive?: boolean }
+    payload: { name?: string; code?: string; description?: string; isActive?: boolean },
+    userId?: string
   ): Promise<UomDTO | undefined> {
     const result = await db
       .update(uoms)
       .set({ 
         ...payload, 
         ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
-        updatedAt: new Date() 
+        updatedAt: new Date(),
+        updatedBy: userId
       })
       .where(and(eq(uoms.id, id), isNull(uoms.deletedAt)))
       .returning();

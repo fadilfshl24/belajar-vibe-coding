@@ -140,7 +140,7 @@ export function paginatedResponse<T>(
 export function failedResponse(
   correlationId: string,
   message: string,
-  code: 400 | 401 | 403 | 404 | 500,
+  code: 400 | 401 | 403 | 404 | 409 | 500,
   exceptionMessage?: string
 ): StandardResponse<null> {
   if (code === 500) {

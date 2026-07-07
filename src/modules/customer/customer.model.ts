@@ -106,10 +106,15 @@ export class CustomerModel {
     return result[0];
   }
 
-  static async create(payload: Omit<CustomerInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">): Promise<CustomerRecord> {
+  static async create(
+    payload: Omit<CustomerInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">,
+    userId?: string
+  ): Promise<CustomerRecord> {
     const result = await db.insert(customers).values({
       ...payload,
       code: payload.code.toUpperCase(),
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
     if (!result[0]) throw new Error("Failed to create customer");
     return result[0];
@@ -117,14 +122,16 @@ export class CustomerModel {
 
   static async update(
     id: string,
-    payload: Partial<Omit<CustomerInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>
+    payload: Partial<Omit<CustomerInsert, "id" | "createdAt" | "updatedAt" | "deletedAt">>,
+    userId?: string
   ): Promise<CustomerDTO | undefined> {
     const result = await db
       .update(customers)
       .set({ 
         ...payload, 
         ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
-        updatedAt: new Date() 
+        updatedAt: new Date(),
+        updatedBy: userId
       })
       .where(and(eq(customers.id, id), isNull(customers.deletedAt)))
       .returning();

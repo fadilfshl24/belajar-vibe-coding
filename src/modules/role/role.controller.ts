@@ -7,6 +7,7 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = 'ROLE'
 
 export class RoleController {
   // ---------------------------------------------------------------------------
@@ -94,15 +95,16 @@ export class RoleController {
         );
       }
 
-      const existing = await RoleModel.findByName(parsed.data.name);
+      const existing = await RoleModel.findByCode(parsed.data.code);
       if (existing) {
-        return failedResponse(correlationId, "Create data failed!", 400, "Role name already exists");
+        return failedResponse(correlationId, "Create data failed!", 400, "Role code already exists");
       }
 
-      const role = await RoleModel.createRole(parsed.data);
+      const role = await RoleModel.createRole(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Role dengan ID ${role.id}`,
       });
@@ -140,10 +142,11 @@ export class RoleController {
       const existing = await RoleModel.findById(id);
       if (!existing) return failedResponse(correlationId, "Data not found!", 400);
 
-      const updated = await RoleModel.updateRole(id, parsed.data);
+      const updated = await RoleModel.updateRole(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Role ID ${id}`,
       });
@@ -175,6 +178,7 @@ export class RoleController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Role ID ${id}`,
       });

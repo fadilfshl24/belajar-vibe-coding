@@ -85,6 +85,62 @@
       "when": 1782705413642,
       "tag": "0011_chilly_invisible_woman",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782961645883,
+      "tag": "0012_brainy_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782978428777,
+      "tag": "0013_whole_pete_wisdom",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782978459919,
+      "tag": "0014_tranquil_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1782979010643,
+      "tag": "0015_little_wild_child",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783038829956,
+      "tag": "0016_pink_marauders",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783062279087,
+      "tag": "0017_odd_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783325945675,
+      "tag": "0018_smart_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783387713873,
+      "tag": "0019_crazy_miracleman",
+      "breakpoints": true
     }
   ]
 }

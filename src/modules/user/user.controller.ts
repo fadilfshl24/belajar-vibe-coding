@@ -5,6 +5,7 @@ import { parseCreateUserInput, parseUpdateUserInput, parseListQuery } from "./us
 import { UserModel } from "./user.model";
 import { toUserDTO } from "./user.dto";
 import { logActivity } from "../../core/utils/activityLogger";
+import type { JwtPayload } from "../../core/types/JwtPayload";
 
 const BCRYPT_SALT_ROUNDS = 10;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,7 +15,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // POST /api/users — Register user baru
   // ---------------------------------------------------------------------------
-  static async register(ctx: Context) {
+  static async register(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -43,7 +44,7 @@ export class UserController {
         password: hashedPassword,
         roleId,
         isActive,
-      });
+      }, ctx.user?.sub);
 
       const userAgent = ctx.headers["user-agent"];
       const ipAddress =
@@ -69,7 +70,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // PUT /api/users/:id — Update user
   // ---------------------------------------------------------------------------
-  static async updateUser(ctx: Context) {
+  static async updateUser(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -113,7 +114,7 @@ export class UserController {
         updatePayload.password = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
       }
 
-      const updatedUser = await UserModel.update(id, updatePayload);
+      const updatedUser = await UserModel.update(id, updatePayload, ctx.user?.sub);
       if (!updatedUser) {
         return failedResponse(correlationId, "Update data failed!", 500, "Failed to update user database record");
       }
@@ -157,11 +158,45 @@ export class UserController {
         );
       }
 
-      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId } = parsed.data;
+      const { page, limit: rawLimit, orderBy, searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames, excludeMappedUsers } = parsed.data;
       const internalLimit = rawLimit === 1000 ? Number.MAX_SAFE_INTEGER : rawLimit;
 
+      const excludeRoleNamesArr = excludeRoleNames
+        ? excludeRoleNames.split(",").map(s => s.trim()).filter(Boolean)
+        : [];
+
+      // RBAC filtering
+      const currentUserRoles = await UserModel.getUserRolesAndWarehouses(ctx.user!.sub);
+      const isSuperadmin = currentUserRoles.roleNames.includes('superadmin');
+      const isAdmin = currentUserRoles.roleNames.includes('admin');
+      const isManager = currentUserRoles.roleNames.includes('manager');
+      const isBranchHead = currentUserRoles.roleNames.includes('branch_head');
+      const isWarehouseHead = currentUserRoles.roleNames.includes('warehouse_head');
+
+      let allowedWarehouseIds: string[] | undefined = undefined;
+      const rbacExcludeRoleNames = [...excludeRoleNamesArr];
+
+      if (isSuperadmin) {
+        // Can see all
+      } else if (isAdmin) {
+        rbacExcludeRoleNames.push('superadmin');
+      } else if (isManager) {
+        rbacExcludeRoleNames.push('superadmin', 'admin');
+      } else if (isBranchHead) {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head');
+        allowedWarehouseIds = currentUserRoles.warehouseIds;
+      } else if (isWarehouseHead) {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head', 'warehouse_head');
+        allowedWarehouseIds = currentUserRoles.warehouseIds;
+      } else {
+        rbacExcludeRoleNames.push('superadmin', 'admin', 'manager', 'branch_head', 'warehouse_head', 'staff');
+        allowedWarehouseIds = []; // No access
+      }
+
+      const finalExcludeRoles = Array.from(new Set(rbacExcludeRoleNames));
+
       const [totalRecord, records] = await Promise.all([
-        UserModel.countAll({ searchTerm, filterColumn, status, roleId }),
+        UserModel.countAll({ searchTerm, filterColumn, status, roleId, roleCode, warehouseId, excludeRoleNames: finalExcludeRoles, excludeMappedUsers, allowedWarehouseIds }),
         UserModel.findAll({
           page,
           limit: internalLimit,
@@ -170,6 +205,11 @@ export class UserController {
           filterColumn,
           status,
           roleId,
+          roleCode,
+          warehouseId,
+          excludeRoleNames: finalExcludeRoles,
+          excludeMappedUsers,
+          allowedWarehouseIds,
         }),
       ]);
 
@@ -183,6 +223,8 @@ export class UserController {
           ...(searchTerm ? { searchTerm } : {}),
           ...(status !== undefined ? { status: String(status) } : {}),
           ...(roleId ? { roleId } : {}),
+          ...(roleCode ? { roleCode } : {}),
+          ...(warehouseId ? { warehouseId } : {}),
           ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {})
         });
         return `${baseUrl}?${params.toString()}`;
@@ -232,7 +274,7 @@ export class UserController {
   // ---------------------------------------------------------------------------
   // PATCH /api/users/:id/status — Update status user
   // ---------------------------------------------------------------------------
-  static async updateStatus(ctx: Context) {
+  static async updateStatus(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
@@ -251,7 +293,7 @@ export class UserController {
       const existingUser = await UserModel.findById(id);
       if (!existingUser) return failedResponse(correlationId, "Data not found!", 400);
 
-      await UserModel.updateStatus(id, status as 0 | 1);
+      await UserModel.updateStatus(id, status as 0 | 1, ctx.user?.sub);
       return successResponse(correlationId, "Data has been updated", null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";

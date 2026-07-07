@@ -4,6 +4,8 @@ export const prDetailSchema = z.object({
   itemId: z.string().uuid("Invalid item ID"),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   price: z.number().min(0, "Price cannot be negative").default(0),
+  remark: z.string().optional().nullable(),
+  attachmentUrl: z.string().optional().nullable(),
 });
 
 export const createPurchaseRequestSchema = z.object({
@@ -22,6 +24,7 @@ export const updatePurchaseRequestSchema = createPurchaseRequestSchema.partial()
 
 export const patchPRStatusSchema = z.object({
   status: z.number().int().min(0).max(4),
+  remark: z.string().optional(),
 });
 
 export const prListQuerySchema = z.object({

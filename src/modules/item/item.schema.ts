@@ -53,6 +53,7 @@ export const items = pgTable(
     discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }).notNull().default("0.00"),
     discountPrice: decimal("discount_price", { precision: 15, scale: 2 }).notNull().default("0.00"),
     priceAfterDiscount: decimal("price_after_discount", { precision: 15, scale: 2 }).notNull().default("0.00"),
+    isAsset: boolean("is_asset").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
 
     ...auditColumns,
@@ -106,3 +107,16 @@ export type ItemRecord = typeof items.$inferSelect;
 export type ItemInsert = typeof items.$inferInsert;
 export type ItemPackageDetailRecord = typeof itemPackageDetails.$inferSelect;
 export type ItemPackageDetailInsert = typeof itemPackageDetails.$inferInsert;
+
+import { relations } from "drizzle-orm";
+
+export const itemsRelations = relations(items, ({ one }) => ({
+  category: one(itemCategories, {
+    fields: [items.categoryId],
+    references: [itemCategories.id],
+  }),
+  uom: one(uoms, {
+    fields: [items.uomId],
+    references: [uoms.id],
+  }),
+}));

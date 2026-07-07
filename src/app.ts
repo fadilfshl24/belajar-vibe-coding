@@ -18,6 +18,10 @@ import { vendorRoutes } from "./modules/vendor";
 import { platformRoutes } from "./modules/platform";
 import { purchaseRequestRoutes } from "./modules/purchase-request";
 import { purchaseOrderRoutes } from "./modules/purchase-order";
+import { userWarehouseMappingRoutes } from "./modules/user-warehouse-mapping";
+import { warehouseRegionRoutes } from "./modules/warehouse/warehouse.routes";
+import { uploadRoutes } from "./modules/upload/upload.routes";
+import { staticPlugin } from "@elysiajs/static";
 
 /**
  * App Factory
@@ -40,6 +44,12 @@ export const app = new Elysia()
       });
     }
   })
+  .use(
+    staticPlugin({
+      assets: "public",
+      prefix: "/public",
+    })
+  )
   .use(authRoutes)
   .use(userRoutes)
   .use(roleRoutes)
@@ -61,6 +71,9 @@ export const app = new Elysia()
   .use(regionRoutes)
   .use(purchaseRequestRoutes)
   .use(purchaseOrderRoutes)
+  .use(userWarehouseMappingRoutes)
+  .use(warehouseRegionRoutes)
+  .use(uploadRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),

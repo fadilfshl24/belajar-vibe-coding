@@ -14,6 +14,7 @@ import { seedRoles } from "./roles.seed";
 import { seedMenus } from "./menus.seed";
 import { seedSuperadmin } from "./superadmin.seed";
 import { seedPermissions } from "./permissions.seed";
+import { seedPlatforms } from "./platforms.seed";
 
 async function main() {
   console.log("\n🌱 Starting database seeding...\n");
@@ -22,6 +23,7 @@ async function main() {
     const [roleIdMap, menuIdMap] = await Promise.all([
       seedRoles(),
       seedMenus(),
+      seedPlatforms(),
     ]);
 
     await seedSuperadmin(roleIdMap["superadmin"]!);

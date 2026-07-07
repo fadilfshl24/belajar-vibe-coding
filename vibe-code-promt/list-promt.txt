@@ -1,0 +1,123 @@
+# issues-data-order-from-tiktok
+
+Buatkan issues-data-order-from-tiktok-shop.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan planning untuk membuat background job / console app, yang melisten webhook dari tiktok shop atau e-commerce lainnya yang saya punya untuk menarik semua data pesanan yang pending ke aplikasi Warehouse Management System saya. agar nantinya bisa di validasi oleh orang packing atau gudang untuk mencocokan datanya sudah di packing atau belum. Flow background job nya itu sebagai berikut :
+1. Menarik pesanan yang statusnya pending / belum di bayar. dari tiktok shop
+2. Setelah di tarik ke aplikasi saya, saya ingin nanti ada kolom status pending, dalam proses, selesai.
+3. saya akan buat menu / halaman untuk bisa upload resi / bukti pengiriman untuk pesanan yang status pending / dalam proses.
+4. dan ketika pesanan di update statusnya menjadi selesai, maka pesanan otomatis akan terupdate juga di tiktok shop.
+5. untuk akun tiktok shop ada 3 akun, jadi saya ingin bisa membedakan pesanan dari akun tiktok shop mana yang masuk.
+
+buatkan table order_platform, dengan kolom sebagai berikut :
+1. id
+2. platform_id
+3. status
+4. total_amount
+5. shipping_provider
+6. tracking_number
+7. buyer_message
+8. shipping_type
+9. rts_sla_time
+10. is_cod
+11. cancel_reason
+12. create_time
+13. update_time
+
+buatkan table order_platform_detail, dengan kolom sebagai berikut :
+1. id
+2. order_platform_id
+3. product_id
+4. product_name
+5. seller_sku
+6. sale_price
+7. qty
+8. sku_id
+
+buatkan table recipient_platform, dengan kolom sebagai berikut :
+1. id
+2. order_platform_id
+3. name
+4. phone
+5. address
+6. region_code
+7. postal_code 
+
+pastikan untuk data yang di tarik dan di store ke database di validasi terlebih dahulu agar tidak ada duplicate data dan tidak ada data yang double, dan jika ada data yang tidak valid agar bisa di handle dengan baik, bisa di skip atau di queue terlebih dahulu untuk di validasi ulang.
+
+buatkan mapper untuk masing - masing platform e-commerce, dengan mengkonversi semua data yang masuk ke format data saya. pastikan tidak ada yang miss dan berikan nilai default jika tidak ada key atau valuenya agar tidak bermasalah ketika di insert ke database.
+
+Tolong buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+
+# issues-data-purchase-order-generate
+
+Buatkan issues-data-purchase-order-generate.md di folder issues yang berisi perencanaan
+untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan perencanaan untuk generate module purchase order yang di implementasikan menggunakan tanstack router, tanstack query, react hook form, zod, dan axios.
+
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan Library Auth.js untuk session dan authenticationnya
+3. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+4. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+5. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+
+Buatkan validasi dan permissionnya untuk pembuatan purchase ordernya, pastikan di validasi dengan baik
+
+Tolong buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-purchase-request-approval
+
+Buatkan issues-purchase-request-approval-plan.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan perencanaan untuk generate module purchase request approval yang di implementasikan menggunakan tanstack router, tanstack query, react hook form, zod, dan axios.
+
+Tambahkan juga notif indikator di tampilannya untuk masing - masing level yang akan approve purchase requestnya. dan jangan lupa untuk dibuatkan report monitoring status data purchase requestnya untuk approval sudah sampai mana
+
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan juga untuk approval level nya, bisa di atur di pengaturan, untuk approval level berapa saja yang di izinkan untuk approve purchase request approval. sebagai berikut :
+    1. Untuk role staff, berarti dia perlu approval dari warehouse head dan branch head dan manager
+    2. Untuk role warehouse head, berarti dia perlu approval dari branch head dan manager
+    3. Untuk role branch head, berarti dia perlu approval dari manager
+
+Ketika sudah di approve semua maka status Purchase Request berubah menjadi Approved dan siap untuk kelola oleh admin. jika belum semua makan statusnya masih Pending.
+
+Contoh case implementasi approval level yang nantinya akan dibuat. Pastikan tidak boleh ada yang loncat dan buatkan fitur agar bisa di bypass oleh superadmin jika terjadi sesuatu hal.
+
+dan dari sisi Purchase Order, dia hanya bisa mengambil data purchase order yang sudah Approved saja, tidak boleh yang statusnya Draft, Pending, Rejected, Closed
+
+Tolong buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-user-mapping-warehouse
+
+Buatkan issues-user-mapping-warehouse.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Buatkan perencanaan untuk generate module user mapping warehouse yang di implementasikan menggunakan tanstack router, tanstack query, react hook form, zod, dan axios.
+
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Buatkan function tambahan untuk user mapping warehouse, bisa di atur di pengaturan, untuk user mana saja yang bisa mengakses warehouse mana saja.
+6. Mappingan data user ke warehouse ini hanya berlaku untuk role tertentu saja, contohnya role staff, warehouse head, branch head, manager.
+7. Role superadmin tidak terpengaruh dengan user mapping warehouse ini, dia bisa mengakses semua warehouse.
+8. Sehingga ketika staff atau warehouse head ingin membuat sebuah purchase request baru untuk form input warehouse / gudang sudah terpilih otomatis berdasarkan mappingan warehouse usernya.
+9. Tolong buatkan table mappingan antara user dan warehousenya dan pastikan juga di get ketika login di masukkan ke dalam session agar frontend bisa tau data user tersebut ter mapping ke warehouse yang mana.
+10. Buatkan validasi dan permissionnya untuk pembuatan purchase requestnya, pastikan di validasi dengan baik
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-purchase-request-planning-by-role.md
+

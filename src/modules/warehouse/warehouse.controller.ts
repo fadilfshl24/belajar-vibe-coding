@@ -4,12 +4,16 @@ import { WarehouseModel, WarehouseHeadModel } from "./warehouse.model";
 import { parseCreateWarehouseInput, parseUpdateWarehouseInput, parseWarehouseListQuery, parseAssignWarehouseHeadInput } from "./warehouse.validation";
 import { logActivity } from "../../core/utils/activityLogger";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { db } from "../../core/db";
+import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_ORDER_BY = "{'CreatedAt':'DESC'}";
+const MODULE_TYPE = "WAREHOUSE"
 
 export class WarehouseController {
-  static async getAll(ctx: Context) {
+  static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
       (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
@@ -19,12 +23,43 @@ export class WarehouseController {
         return failedResponse(correlationId, "Invalid query params", 400, parsed.error.issues[0]?.message);
       }
 
-      const { page, limit, orderBy, searchTerm, filterColumn, isActive } = parsed.data;
+      const { page, limit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead } = parsed.data;
       const internalLimit = limit === 1000 ? Number.MAX_SAFE_INTEGER : limit;
 
+      let allowedWarehouseIds: string[] | undefined = undefined;
+
+      if (ctx.user) {
+        const userId = ctx.user.sub;
+        const userRoles = await db
+          .select({ roleName: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(
+            and(
+              eq(userWarehouseRoles.userId, userId),
+              isNull(userWarehouseRoles.deletedAt),
+              isNull(roles.deletedAt)
+            )
+          );
+
+        const roleNames = userRoles.map((ur) => ur.roleName);
+        if (roleNames.includes("warehouse_head") || roleNames.includes("branch_head") || roleNames.includes("staff")) {
+          const mappings = await db
+            .select({ id: userWarehouseMappings.warehouseId })
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.isActive, true)
+              )
+            );
+          allowedWarehouseIds = mappings.map(m => m.id);
+        }
+      }
+
       const [totalRecord, records] = await Promise.all([
-        WarehouseModel.countAll({ searchTerm, filterColumn, isActive }),
-        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive }),
+        WarehouseModel.countAll({ searchTerm, filterColumn, isActive, excludeHasHead, allowedWarehouseIds }),
+        WarehouseModel.findAll({ page, limit: internalLimit, orderBy, searchTerm, filterColumn, isActive, excludeHasHead, allowedWarehouseIds }),
       ]);
 
       const totalPage = limit === 1000 ? 1 : Math.ceil(totalRecord / limit);
@@ -99,10 +134,11 @@ export class WarehouseController {
         return failedResponse(correlationId, "Create data failed!", 400, "Warehouse code already exists");
       }
 
-      const warehouse = await WarehouseModel.create(parsed.data);
+      const warehouse = await WarehouseModel.create(parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menambahkan data Warehouse "${warehouse.name}" dengan ID ${warehouse.id}`,
       });
@@ -144,10 +180,11 @@ export class WarehouseController {
         }
       }
 
-      const updated = await WarehouseModel.update(id, parsed.data);
+      const updated = await WarehouseModel.update(id, parsed.data, ctx.user?.sub);
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_DATA",
         description: `User ${ctx.user?.email} mengubah data Warehouse ID ${id}`,
       });
@@ -179,6 +216,7 @@ export class WarehouseController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} menghapus data Warehouse ID ${id}`,
       });
@@ -233,6 +271,7 @@ export class WarehouseHeadController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "CREATE_DATA",
         description: `User ${ctx.user?.email} menugaskan user ID ${parsed.data.userId} sebagai kepala gudang ID ${warehouseId}`,
       });
@@ -258,6 +297,7 @@ export class WarehouseHeadController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "DELETE_DATA",
         description: `User ${ctx.user?.email} melepas tugas kepala gudang ID ${headId}`,
       });
@@ -266,6 +306,145 @@ export class WarehouseHeadController {
     } catch (err: unknown) {
       ctx.set.status = 400;
       return failedResponse(correlationId, "Unassign head failed!", 400, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+}
+
+/**
+ * WarehouseRegionController
+ *
+ * Endpoint untuk mendukung fitur filter wilayah pada Branch Head mapping.
+ * Mengembalikan data distinct dari kolom province & city_regency di tabel warehouses.
+ */
+export class WarehouseRegionController {
+  /**
+   * GET /api/warehouses/regions
+   * Mengembalikan daftar provinsi unik dari gudang yang aktif.
+   */
+  static async getProvinces(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { provinces: provincesTable } = await import("../region/region.schema");
+      const { isNull, eq } = await import("drizzle-orm");
+
+      const rows = await db
+        .selectDistinct({ id: warehousesTable.province, name: provincesTable.name })
+        .from(warehousesTable)
+        .leftJoin(provincesTable, eq(warehousesTable.province, provincesTable.id))
+        .where(
+          // Use SQL directly since and() requires specific type
+          isNull(warehousesTable.deletedAt)
+        );
+
+      // Filter active and non-null province in JS for safety
+      const provinces = rows
+        .filter(r => r.id !== null && r.id !== "")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return successResponse(correlationId, "Data found!", { provinces });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  /**
+   * GET /api/warehouse-regions/cities?province=X
+   * Mengembalikan daftar kota/kabupaten unik di provinsi tertentu.
+   */
+  static async getCitiesByProvince(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { province, excludeHasBranchHead } = ctx.query as { province?: string, excludeHasBranchHead?: string };
+      if (!province) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "province query param is required", 400);
+      }
+
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { regencies: regenciesTable } = await import("../region/region.schema");
+      const { and, isNull, eq, notInArray } = await import("drizzle-orm");
+      const { userWarehouseMappings, userWarehouseRoles, roles } = await import("../role/role.schema");
+
+      let conds = and(
+        isNull(warehousesTable.deletedAt),
+        eq(warehousesTable.isActive, true),
+        eq(warehousesTable.province, province)
+      );
+
+      if (excludeHasBranchHead === 'true') {
+        const branchHeadSubquery = db
+          .select({ cityId: warehousesTable.cityRegency })
+          .from(userWarehouseMappings)
+          .innerJoin(warehousesTable, eq(userWarehouseMappings.warehouseId, warehousesTable.id))
+          .innerJoin(userWarehouseRoles, eq(userWarehouseMappings.userId, userWarehouseRoles.userId))
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(eq(roles.code, 'branch_head'));
+
+        conds = and(conds, notInArray(warehousesTable.cityRegency, branchHeadSubquery))!;
+      }
+
+      const rows = await db
+        .selectDistinct({ id: warehousesTable.cityRegency, name: regenciesTable.name })
+        .from(warehousesTable)
+        .leftJoin(regenciesTable, eq(warehousesTable.cityRegency, regenciesTable.id))
+        .where(conds);
+
+      const cities = rows
+        .filter(r => r.id !== null && r.id !== "")
+        .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return successResponse(correlationId, "Data found!", { cities });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  /**
+   * GET /api/warehouses/by-region?province=X&city=Y
+   * Mengembalikan daftar gudang aktif di wilayah tertentu.
+   */
+  static async getByRegion(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const { province, city } = ctx.query as { province?: string; city?: string };
+
+      if (!province || !city) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "province and city query params are required", 400);
+      }
+
+      const { db } = await import("../../core/db");
+      const { warehouses: warehousesTable } = await import("./warehouse.schema");
+      const { and, isNull, eq } = await import("drizzle-orm");
+
+      const records = await db
+        .select({
+          id: warehousesTable.id,
+          code: warehousesTable.code,
+          name: warehousesTable.name,
+          province: warehousesTable.province,
+          cityRegency: warehousesTable.cityRegency,
+        })
+        .from(warehousesTable)
+        .where(
+          and(
+            isNull(warehousesTable.deletedAt),
+            eq(warehousesTable.isActive, true),
+            eq(warehousesTable.province, province),
+            eq(warehousesTable.cityRegency, city)
+          )
+        )
+        .orderBy(warehousesTable.code);
+
+      return successResponse(correlationId, "Data found!", { records });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 }

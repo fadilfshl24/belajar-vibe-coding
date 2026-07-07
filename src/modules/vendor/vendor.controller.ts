@@ -9,6 +9,7 @@ import {
 } from "./vendor.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class VendorController {
   static async getAll(ctx: Context) {
@@ -54,7 +55,7 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const vendor = await VendorModel.findById(id);
       if (!vendor) {
         ctx.set.status = 404;
@@ -83,7 +84,15 @@ export class VendorController {
         return failedResponse(correlationId, "Vendor code already exists", 409);
       }
 
-      const newVendor = await VendorModel.create(parsed.data as CreateVendorInput);
+      const newVendor = await VendorModel.create(parsed.data as CreateVendorInput, ctx.user?.sub);
+      
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} menambahkan data Vendor "${newVendor.name}" dengan ID ${newVendor.id}`,
+      });
+      
       ctx.set.status = 201;
       return successResponse(correlationId, "Vendor created successfully", { record: newVendor });
     } catch (err: unknown) {
@@ -96,7 +105,7 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const parsed = parseUpdateVendorInput(ctx.body);
       if (!parsed.success) {
         ctx.set.status = 400;
@@ -111,11 +120,18 @@ export class VendorController {
         }
       }
 
-      const updated = await VendorModel.update(id, parsed.data as UpdateVendorInput);
+      const updated = await VendorModel.update(id, parsed.data as UpdateVendorInput, ctx.user?.sub);
       if (!updated) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Vendor not found", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} memperbarui data Vendor "${updated.name}" dengan ID ${updated.id}`,
+      });
 
       return successResponse(correlationId, "Vendor updated successfully", { record: updated });
     } catch (err: unknown) {
@@ -128,12 +144,20 @@ export class VendorController {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
-      const id = (ctx.params as Record<string, string>).id;
+      const id = (ctx.params as Record<string, string>).id ?? "";
       const deleted = await VendorModel.softDelete(id);
       if (!deleted) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Vendor not found or already deleted", 404);
       }
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_DATA",
+        module: "VENDOR",
+        description: `User ${ctx.user?.email} menghapus data Vendor dengan ID ${id}`,
+      });
+
       return successResponse(correlationId, "Vendor deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

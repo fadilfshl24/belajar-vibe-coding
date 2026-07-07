@@ -9,11 +9,13 @@ import { isNull, eq } from "drizzle-orm";
  * Bersifat idempotent — tidak akan insert duplikat jika sudah ada.
  */
 export const ROLES = [
-  { name: "superadmin", description: "Administrator tertinggi dengan akses penuh ke seluruh sistem" },
-  { name: "admin", description: "Administrator yang dapat mengelola user, master data, dan konfigurasi" },
-  { name: "warehouse_head", description: "Kepala gudang yang mengelola operasional dan inventaris gudang" },
-  { name: "staff", description: "Staff operasional yang memproses order keluar-masuk" },
-  { name: "user", description: "Pengguna biasa dengan akses terbatas" },
+  { code: "superadmin", name: "Super Admin", description: "Administrator tertinggi dengan akses penuh ke seluruh sistem" },
+  { code: "admin", name: "Admin", description: "Administrator yang dapat mengelola user, master data, dan konfigurasi" },
+  { code: "warehouse_head", name: "Warehouse Head", description: "Kepala gudang yang mengelola operasional dan inventaris gudang" },
+  { code: "branch_head", name: "Branch Head", description: "Kepala cabang yang menyetujui operasional tingkat cabang" },
+  { code: "manager", name: "Manager", description: "Manager pusat yang memvalidasi persetujuan tingkat tertinggi" },
+  { code: "staff", name: "Staff", description: "Staff operasional yang memproses order keluar-masuk" },
+  { code: "user", name: "User", description: "Pengguna biasa dengan akses terbatas" },
 ] as const;
 
 export async function seedRoles(): Promise<Record<string, string>> {
@@ -24,16 +26,16 @@ export async function seedRoles(): Promise<Record<string, string>> {
     const existing = await db
       .select({ id: roles.id })
       .from(roles)
-      .where(eq(roles.name, role.name))
+      .where(eq(roles.code, role.code))
       .limit(1);
 
     if (existing[0]) {
-      roleIdMap[role.name] = existing[0].id;
-      console.log(`  ✓ Role "${role.name}" already exists`);
+      roleIdMap[role.code] = existing[0].id;
+      console.log(`  ✓ Role "${role.name}" (${role.code}) already exists`);
     } else {
       const inserted = await db.insert(roles).values(role).returning({ id: roles.id });
-      roleIdMap[role.name] = inserted[0]!.id;
-      console.log(`  + Role "${role.name}" created`);
+      roleIdMap[role.code] = inserted[0]!.id;
+      console.log(`  + Role "${role.name}" (${role.code}) created`);
     }
   }
 

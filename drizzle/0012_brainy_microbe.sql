@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "is_asset" boolean DEFAULT false NOT NULL;

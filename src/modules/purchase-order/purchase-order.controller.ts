@@ -5,12 +5,14 @@ import {
   parseUpdatePOInput,
   parsePOListQuery,
   parsePatchPOStatus,
+  parsePatchPOApproval,
   parseReceiveGoodsInput,
   type CreatePOInput,
   type UpdatePOInput,
 } from "./purchase-order.validation";
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
+import { logActivity } from "../../core/utils/activityLogger";
 
 export class PurchaseOrderController {
   static async getAll(ctx: Context) {
@@ -57,7 +59,7 @@ export class PurchaseOrderController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const po = await PurchaseOrderModel.findById(id);
+      const po = await PurchaseOrderModel.findById(id ?? "");
       if (!po) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
@@ -79,7 +81,15 @@ export class PurchaseOrderController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const newPO = await PurchaseOrderModel.create(parsed.data as CreatePOInput);
+      const newPO = await PurchaseOrderModel.create(parsed.data as CreatePOInput, ctx.user?.sub);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "CREATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} membuat Purchase Order "${newPO?.code}" dengan ID ${newPO?.id}`,
+      });
+
       ctx.set.status = 201;
       return successResponse(correlationId, "Purchase order created successfully", { record: newPO });
     } catch (err: unknown) {
@@ -93,7 +103,7 @@ export class PurchaseOrderController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const po = await PurchaseOrderModel.findById(id);
+      const po = await PurchaseOrderModel.findById(id ?? "");
       if (!po) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
@@ -109,11 +119,67 @@ export class PurchaseOrderController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const updated = await PurchaseOrderModel.update(id, parsed.data as UpdatePOInput);
+      const updated = await PurchaseOrderModel.update(id ?? "", parsed.data as UpdatePOInput, ctx.user?.sub);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} memperbarui Purchase Order "${updated?.code}" dengan ID ${updated?.id}`,
+      });
+
       return successResponse(correlationId, "Purchase order updated successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
       return failedResponse(correlationId, "Failed to update purchase order", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  static async submit(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = (ctx.params as Record<string, string>).id;
+      const updated = await PurchaseOrderModel.submit(id ?? "", ctx.user?.sub ?? "");
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "SUBMIT_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} submit PO "${updated?.code}" for approval`,
+      });
+
+      return successResponse(correlationId, "Purchase order submitted for approval", { record: updated });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to submit purchase order", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  static async approveOrReject(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = (ctx.params as Record<string, string>).id;
+      const parsed = parsePatchPOApproval(ctx.body);
+      if (!parsed.success) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
+      }
+
+      const updated = await PurchaseOrderModel.patchApprovalStatus(id ?? "", parsed.data, ctx.user?.sub ?? "");
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "APPROVE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} ${parsed.data.action} PO "${updated?.code}"`,
+      });
+
+      return successResponse(correlationId, `Purchase order ${parsed.data.action}d successfully`, { record: updated });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to process approval", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 
@@ -128,13 +194,21 @@ export class PurchaseOrderController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const po = await PurchaseOrderModel.findById(id);
+      const po = await PurchaseOrderModel.findById(id ?? "");
       if (!po) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
       }
 
-      const updated = await PurchaseOrderModel.patchStatus(id, parsed.data.status);
+      const updated = await PurchaseOrderModel.patchStatus(id ?? "", parsed.data.status);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} mengubah status Purchase Order "${updated?.code}" menjadi ${parsed.data.status}`,
+      });
+
       return successResponse(correlationId, "Purchase order status updated", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -153,18 +227,26 @@ export class PurchaseOrderController {
         return failedResponse(correlationId, "Validation error", 400, parsed.error.issues[0]?.message);
       }
 
-      const po = await PurchaseOrderModel.findById(id);
+      const po = await PurchaseOrderModel.findById(id ?? "");
       if (!po) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
       }
       
-      if (po.status === 0 || po.status === 3 || po.status === 4) {
+      if (po.status !== 4 && po.status !== 5) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Cannot receive goods for this PO status", 400);
+        return failedResponse(correlationId, "Cannot receive goods. PO must be Sent or Partially Received.", 400);
       }
 
-      const updated = await PurchaseOrderModel.receiveGoods(id, parsed.data.items);
+      const updated = await PurchaseOrderModel.receiveGoods(id ?? "", parsed.data.items);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "UPDATE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} mencatat penerimaan barang untuk Purchase Order "${updated?.code}"`,
+      });
+
       return successResponse(correlationId, "Goods receipt recorded successfully", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -177,17 +259,26 @@ export class PurchaseOrderController {
 
     try {
       const id = (ctx.params as Record<string, string>).id;
-      const po = await PurchaseOrderModel.findById(id);
+      const po = await PurchaseOrderModel.findById(id ?? "");
       if (!po) {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase order not found", 404);
       }
-      if (po.status !== 0) {
+      if (po.status === 2 || po.status === 4 || po.status === 5 || po.status === 6 || po.status === 7) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Only draft purchase orders can be deleted", 400);
+        return failedResponse(correlationId, "Approved, Sent, Received or already Cancelled purchase orders cannot be cancelled", 400);
       }
 
-      const deleted = await PurchaseOrderModel.softDelete(id);
+      const userId = ctx.user?.sub;
+      const deleted = await PurchaseOrderModel.softDelete(id ?? "", userId);
+
+      await logActivity({
+        userId: ctx.user?.sub,
+        action: "DELETE_ORDER",
+        module: "PURCHASE_ORDER",
+        description: `User ${ctx.user?.email} menghapus Purchase Order "${po.code}"`,
+      });
+
       return successResponse(correlationId, "Purchase order deleted successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;

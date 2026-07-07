@@ -5,6 +5,8 @@ import { parseBulkUpdatePermissionsInput, parseBulkUpdateByRoleInput } from "./p
 import { logActivity } from "../../core/utils/activityLogger";
 import type { JwtPayload } from "../../core/types/JwtPayload";
 
+const MODULE_TYPE = "ROLE_MENU_PERMISSION"
+
 export class PermissionController {
   // ---------------------------------------------------------------------------
   // GET /api/role-permissions — Ambil seluruh matriks permission
@@ -49,6 +51,7 @@ export class PermissionController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_PERMISSION",
         description: `User ${ctx.user?.email} mengubah konfigurasi hak akses role menu (${parsed.data.permissions.length} item)`,
       });
@@ -108,6 +111,7 @@ export class PermissionController {
 
       await logActivity({
         userId: ctx.user?.sub,
+        module: MODULE_TYPE,
         action: "UPDATE_PERMISSION",
         description: `User ${ctx.user?.email} mengubah konfigurasi hak akses role menu (${permissionsToUpdate.length} item) untuk role ID ${roleId}`,
       });

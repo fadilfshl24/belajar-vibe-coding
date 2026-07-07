@@ -30,10 +30,10 @@ export const transactions = pgTable(
     description: text("description"),
     transactionDate: timestamp("transaction_date", { withTimezone: true }).notNull().defaultNow(),
     status: transactionStatusEnum("status").notNull().default("DRAFT"),
+    ...auditColumns,
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
-    ...auditColumns,
   },
   (t) => [
     index("idx_transactions_warehouse_id").on(t.warehouseId),

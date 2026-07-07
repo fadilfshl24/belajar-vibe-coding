@@ -1,6 +1,6 @@
 import { db } from "../../core/db";
 import { inventoryStocks } from "./inventory.schema";
-import { eq, and, sql, asc, desc, ilike, or } from "drizzle-orm";
+import { eq, and, sql, asc, desc, ilike, or, isNull } from "drizzle-orm";
 import { items } from "../item/item.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
 
@@ -15,7 +15,7 @@ interface FindAllOptions {
 export class InventoryModel {
   static async findAll(opts: FindAllOptions) {
     const offset = (opts.page - 1) * opts.limit;
-    const conditions = [eq(inventoryStocks.deletedAt, null)];
+    const conditions = [isNull(inventoryStocks.deletedAt)];
 
     if (opts.warehouseId) {
       conditions.push(eq(inventoryStocks.warehouseId, opts.warehouseId));
@@ -29,7 +29,7 @@ export class InventoryModel {
           ilike(items.name, `%${opts.searchTerm}%`),
           ilike(items.code, `%${opts.searchTerm}%`),
           ilike(warehouses.name, `%${opts.searchTerm}%`)
-        )
+        )!
       );
     }
 
@@ -59,7 +59,7 @@ export class InventoryModel {
   }
 
   static async countAll(opts: Omit<FindAllOptions, "page" | "limit">) {
-    const conditions = [eq(inventoryStocks.deletedAt, null)];
+    const conditions = [isNull(inventoryStocks.deletedAt)];
 
     if (opts.warehouseId) {
       conditions.push(eq(inventoryStocks.warehouseId, opts.warehouseId));
@@ -73,7 +73,7 @@ export class InventoryModel {
           ilike(items.name, `%${opts.searchTerm}%`),
           ilike(items.code, `%${opts.searchTerm}%`),
           ilike(warehouses.name, `%${opts.searchTerm}%`)
-        )
+        )!
       );
     }
 

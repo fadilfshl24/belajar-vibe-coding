@@ -29,6 +29,7 @@ export interface ItemDTO {
   discountPrice: string;
   priceAfterDiscount: string;
   isActive: boolean;
+  isAsset: boolean;
   createdAt: Date;
   updatedAt: Date | null;
   category?: { id: string; name: string } | null;
@@ -59,6 +60,7 @@ export function toItemDTO(
     discountPrice: record.discountPrice,
     priceAfterDiscount: record.priceAfterDiscount,
     isActive: record.isActive,
+    isAsset: record.isAsset,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt ?? null,
     ...(category ? { category } : {}),

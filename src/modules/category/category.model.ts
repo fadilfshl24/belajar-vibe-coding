@@ -101,15 +101,20 @@ export class CategoryModel {
     return result[0];
   }
 
-  static async create(payload: {
-    name: string;
-    code: string;
-    description?: string;
-    isActive?: boolean;
-  }): Promise<ItemCategoryRecord> {
+  static async create(
+    payload: {
+      name: string;
+      code: string;
+      description?: string;
+      isActive?: boolean;
+    },
+    userId?: string
+  ): Promise<ItemCategoryRecord> {
     const result = await db.insert(itemCategories).values({
       ...payload,
       code: payload.code.toUpperCase(),
+      createdBy: userId,
+      updatedBy: userId,
     }).returning();
     if (!result[0]) throw new Error("Failed to create category");
     return result[0];
@@ -117,14 +122,16 @@ export class CategoryModel {
 
   static async update(
     id: string,
-    payload: { name?: string; code?: string; description?: string; isActive?: boolean }
+    payload: { name?: string; code?: string; description?: string; isActive?: boolean },
+    userId?: string
   ): Promise<CategoryDTO | undefined> {
     const result = await db
       .update(itemCategories)
       .set({ 
         ...payload, 
         ...(payload.code ? { code: payload.code.toUpperCase() } : {}),
-        updatedAt: new Date() 
+        updatedAt: new Date(),
+        updatedBy: userId
       })
       .where(and(eq(itemCategories.id, id), isNull(itemCategories.deletedAt)))
       .returning();

@@ -5,8 +5,8 @@ import { permissionGuard } from "../permission/permission.middleware";
 
 export const uomRoutes = new Elysia({ prefix: "/api/uoms" })
   .use(authMiddleware)
-  .get("/", UomController.getAll, { beforeHandle: [permissionGuard("uom", "canView")] })
-  .get("/:id", UomController.getById, { beforeHandle: [permissionGuard("uom", "canView")] })
+  .get("/", UomController.getAll, { beforeHandle: [permissionGuard("uom", ["canView", "canAccessApi"])] })
+  .get("/:id", UomController.getById, { beforeHandle: [permissionGuard("uom", ["canView", "canAccessApi"])] })
   .post("/", UomController.create, { beforeHandle: [permissionGuard("uom", "canCreate")] })
   .put("/:id", UomController.update, { beforeHandle: [permissionGuard("uom", "canUpdate")] })
   .delete("/:id", UomController.remove, { beforeHandle: [permissionGuard("uom", "canDelete")] });

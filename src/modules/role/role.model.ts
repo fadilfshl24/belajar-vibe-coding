@@ -8,6 +8,7 @@ import type { RoleRecord } from "./role.schema";
 function resolveOrderColumn(key: string): AnyColumn {
   const map: Record<string, AnyColumn> = {
     Id: roles.id,
+    Code: roles.code,
     Name: roles.name,
     CreatedAt: roles.createdAt,
     UpdatedAt: roles.updatedAt,
@@ -35,6 +36,7 @@ function buildFilterCondition(filterColumn?: string, searchTerm?: string) {
   if (term === "") return isNull(roles.deletedAt);
   switch (filterColumn) {
     case "name": return and(ilike(roles.name, `%${term}%`), isNull(roles.deletedAt));
+    case "code": return and(ilike(roles.code, `%${term}%`), isNull(roles.deletedAt));
     default: return isNull(roles.deletedAt);
   }
 }
@@ -79,23 +81,33 @@ export class RoleModel {
     return result[0];
   }
 
-  static async findByName(name: string): Promise<RoleRecord | undefined> {
+  static async findByCode(code: string): Promise<RoleDTO | undefined> {
     const result = await db
       .select()
       .from(roles)
-      .where(and(eq(roles.name, name), isNull(roles.deletedAt)))
+      .where(and(eq(roles.code, code), isNull(roles.deletedAt)))
       .limit(1);
 
-    return result[0];
+    return result[0] ? toRoleDTO(result[0]) : undefined;
   }
 
-  static async createRole(payload: {
-    name: string;
-    description?: string;
-  }): Promise<RoleRecord> {
+  static async createRole(
+    payload: {
+      code: string;
+      name: string;
+      description?: string;
+    },
+    userId?: string
+  ): Promise<RoleRecord> {
     const result = await db
       .insert(roles)
-      .values({ name: payload.name, description: payload.description })
+      .values({ 
+        code: payload.code,
+        name: payload.name, 
+        description: payload.description,
+        createdBy: userId,
+        updatedBy: userId,
+      })
       .returning();
 
     if (!result[0]) throw new Error("Failed to create role");
@@ -104,11 +116,16 @@ export class RoleModel {
 
   static async updateRole(
     id: string,
-    payload: { name?: string; description?: string }
+    payload: { code?: string; name?: string; description?: string },
+    userId?: string
   ): Promise<RoleDTO | undefined> {
     const result = await db
       .update(roles)
-      .set({ ...payload, updatedAt: new Date() })
+      .set({ 
+        ...payload, 
+        updatedAt: new Date(),
+        updatedBy: userId
+      })
       .where(and(eq(roles.id, id), isNull(roles.deletedAt)))
       .returning();
 

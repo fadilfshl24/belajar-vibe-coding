@@ -31,11 +31,13 @@ type PermissionEntry = {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  canAccessApi: boolean;
 };
 
-const ALL = { canView: true, canCreate: true, canUpdate: true, canDelete: true };
-const VIEW_ONLY = { canView: true, canCreate: false, canUpdate: false, canDelete: false };
-const NONE = { canView: false, canCreate: false, canUpdate: false, canDelete: false };
+const ALL = { canView: true, canCreate: true, canUpdate: true, canDelete: true, canAccessApi: true };
+const VIEW_ONLY = { canView: true, canCreate: false, canUpdate: false, canDelete: false, canAccessApi: true };
+const NONE = { canView: false, canCreate: false, canUpdate: false, canDelete: false, canAccessApi: false };
+const API_ONLY = { canView: false, canCreate: false, canUpdate: false, canDelete: false, canAccessApi: true };
 
 export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   // --- Superadmin: akses penuh ke semua menu ---
@@ -56,6 +58,8 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "superadmin", menuCode: "platform", ...ALL },
   { roleName: "superadmin", menuCode: "purchase_request", ...ALL },
   { roleName: "superadmin", menuCode: "purchase_order", ...ALL },
+  { roleName: "superadmin", menuCode: "user_warehouse_mapping", ...ALL },
+  { roleName: "superadmin", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Admin ---
   { roleName: "admin", menuCode: "dashboard", ...ALL },
@@ -75,6 +79,8 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "admin", menuCode: "platform", ...NONE },
   { roleName: "admin", menuCode: "purchase_request", ...NONE },
   { roleName: "admin", menuCode: "purchase_order", ...NONE },
+  { roleName: "admin", menuCode: "user_warehouse_mapping", ...ALL },
+  { roleName: "admin", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Warehouse Head ---
   { roleName: "warehouse_head", menuCode: "dashboard", ...ALL },
@@ -82,56 +88,60 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "warehouse_head", menuCode: "barang_keluar", ...ALL },
   { roleName: "warehouse_head", menuCode: "item", ...ALL },
   { roleName: "warehouse_head", menuCode: "gudang", ...ALL },
-  { roleName: "warehouse_head", menuCode: "kategori", ...NONE },
-  { roleName: "warehouse_head", menuCode: "uom", ...NONE },
+  { roleName: "warehouse_head", menuCode: "kategori", ...API_ONLY },
+  { roleName: "warehouse_head", menuCode: "uom", ...API_ONLY },
   { roleName: "warehouse_head", menuCode: "user_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "role_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "menu_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "permission_management", ...NONE },
   { roleName: "warehouse_head", menuCode: "activity_log", ...NONE },
-  { roleName: "warehouse_head", menuCode: "customer", ...NONE },
-  { roleName: "warehouse_head", menuCode: "vendor", ...NONE },
-  { roleName: "warehouse_head", menuCode: "platform", ...NONE },
+  { roleName: "warehouse_head", menuCode: "customer", ...API_ONLY },
+  { roleName: "warehouse_head", menuCode: "vendor", ...API_ONLY },
+  { roleName: "warehouse_head", menuCode: "platform", ...API_ONLY },
   { roleName: "warehouse_head", menuCode: "purchase_request", ...NONE },
   { roleName: "warehouse_head", menuCode: "purchase_order", ...NONE },
+  { roleName: "warehouse_head", menuCode: "user_warehouse_mapping", ...NONE },
+  { roleName: "warehouse_head", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- Staff ---
   { roleName: "staff", menuCode: "dashboard", ...ALL },
   { roleName: "staff", menuCode: "barang_masuk", ...ALL },
   { roleName: "staff", menuCode: "barang_keluar", ...ALL },
-  { roleName: "staff", menuCode: "item", ...NONE },
-  { roleName: "staff", menuCode: "gudang", ...NONE },
-  { roleName: "staff", menuCode: "kategori", ...NONE },
-  { roleName: "staff", menuCode: "uom", ...NONE },
+  { roleName: "staff", menuCode: "item", ...API_ONLY },
+  { roleName: "staff", menuCode: "gudang", ...API_ONLY },
+  { roleName: "staff", menuCode: "kategori", ...API_ONLY },
+  { roleName: "staff", menuCode: "uom", ...API_ONLY },
   { roleName: "staff", menuCode: "user_management", ...NONE },
   { roleName: "staff", menuCode: "role_management", ...NONE },
   { roleName: "staff", menuCode: "menu_management", ...NONE },
   { roleName: "staff", menuCode: "permission_management", ...NONE },
   { roleName: "staff", menuCode: "activity_log", ...NONE },
-  { roleName: "staff", menuCode: "customer", ...NONE },
-  { roleName: "staff", menuCode: "vendor", ...NONE },
-  { roleName: "staff", menuCode: "platform", ...NONE },
+  { roleName: "staff", menuCode: "customer", ...API_ONLY },
+  { roleName: "staff", menuCode: "vendor", ...API_ONLY },
+  { roleName: "staff", menuCode: "platform", ...API_ONLY },
   { roleName: "staff", menuCode: "purchase_request", ...NONE },
   { roleName: "staff", menuCode: "purchase_order", ...NONE },
+  { roleName: "staff", menuCode: "inventory_mutations", ...VIEW_ONLY },
 
   // --- User ---
   { roleName: "user", menuCode: "dashboard", ...ALL },
   { roleName: "user", menuCode: "barang_masuk", ...NONE },
   { roleName: "user", menuCode: "barang_keluar", ...NONE },
-  { roleName: "user", menuCode: "item", ...NONE },
-  { roleName: "user", menuCode: "gudang", ...NONE },
-  { roleName: "user", menuCode: "kategori", ...NONE },
-  { roleName: "user", menuCode: "uom", ...NONE },
+  { roleName: "user", menuCode: "item", ...API_ONLY },
+  { roleName: "user", menuCode: "gudang", ...API_ONLY },
+  { roleName: "user", menuCode: "kategori", ...API_ONLY },
+  { roleName: "user", menuCode: "uom", ...API_ONLY },
   { roleName: "user", menuCode: "user_management", ...NONE },
   { roleName: "user", menuCode: "role_management", ...NONE },
   { roleName: "user", menuCode: "menu_management", ...NONE },
   { roleName: "user", menuCode: "permission_management", ...NONE },
   { roleName: "user", menuCode: "activity_log", ...NONE },
-  { roleName: "user", menuCode: "customer", ...NONE },
-  { roleName: "user", menuCode: "vendor", ...NONE },
-  { roleName: "user", menuCode: "platform", ...NONE },
+  { roleName: "user", menuCode: "customer", ...API_ONLY },
+  { roleName: "user", menuCode: "vendor", ...API_ONLY },
+  { roleName: "user", menuCode: "platform", ...API_ONLY },
   { roleName: "user", menuCode: "purchase_request", ...NONE },
   { roleName: "user", menuCode: "purchase_order", ...NONE },
+  { roleName: "user", menuCode: "inventory_mutations", ...NONE },
 ];
 
 export async function seedPermissions(

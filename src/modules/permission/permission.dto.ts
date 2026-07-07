@@ -8,6 +8,7 @@ export interface PermissionDTO {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  canAccessApi: boolean;
 }
 
 export interface PermissionMatrixRow {
@@ -20,6 +21,7 @@ export interface PermissionMatrixRow {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  canAccessApi: boolean;
 }
 
 export function toPermissionDTO(record: RoleMenuPermissionRecord): PermissionDTO {
@@ -31,5 +33,6 @@ export function toPermissionDTO(record: RoleMenuPermissionRecord): PermissionDTO
     canCreate: record.canCreate,
     canUpdate: record.canUpdate,
     canDelete: record.canDelete,
+    canAccessApi: record.canAccessApi,
   };
 }
