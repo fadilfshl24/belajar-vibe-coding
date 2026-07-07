@@ -5,8 +5,8 @@ import { permissionGuard } from "../permission/permission.middleware";
 
 export const itemRoutes = new Elysia({ prefix: "/api/items" })
   .use(authMiddleware)
-  .get("/", ItemController.getAll, { beforeHandle: [permissionGuard("item", "canView")] })
-  .get("/:id", ItemController.getById, { beforeHandle: [permissionGuard("item", "canView")] })
+  .get("/", ItemController.getAll, { beforeHandle: [permissionGuard("item", ["canView", "canAccessApi"])] })
+  .get("/:id", ItemController.getById, { beforeHandle: [permissionGuard("item", ["canView", "canAccessApi"])] })
   .post("/", ItemController.create, { beforeHandle: [permissionGuard("item", "canCreate")] })
   .put("/:id", ItemController.update, { beforeHandle: [permissionGuard("item", "canUpdate")] })
   .delete("/:id", ItemController.remove, { beforeHandle: [permissionGuard("item", "canDelete")] });

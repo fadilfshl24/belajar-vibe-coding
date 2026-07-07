@@ -134,6 +134,13 @@
       "when": 1783325945675,
       "tag": "0018_smart_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783387713873,
+      "tag": "0019_crazy_miracleman",
+      "breakpoints": true
     }
   ]
 }

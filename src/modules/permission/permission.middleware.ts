@@ -29,7 +29,7 @@ import { PermissionModel } from "./permission.model";
  */
 export function permissionGuard(
   menuCode: string,
-  action: "canView" | "canCreate" | "canUpdate" | "canDelete"
+  action: "canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi" | Array<"canView" | "canCreate" | "canUpdate" | "canDelete" | "canAccessApi">
 ) {
   return async ({ headers, user, set }: any) => {
     const correlationId =
@@ -55,7 +55,7 @@ export function permissionGuard(
             correlationId,
             "Access denied.",
             403,
-            `You do not have '${action}' permission for menu '${menuCode}'`
+            `You do not have '${Array.isArray(action) ? action.join(' or ') : action}' permission for menu '${menuCode}'`
           )
         ),
         { status: 403, headers: { "Content-Type": "application/json" } }

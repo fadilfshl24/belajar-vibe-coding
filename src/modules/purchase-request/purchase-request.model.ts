@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { purchaseRequests, purchaseRequestDetails, purchaseRequestApprovals } from "./purchase-request.schema";
@@ -43,8 +43,9 @@ function buildFilterCondition(params: {
   customerId?: string;
   requestedByUserId?: string;
   visibleWarehouseIds?: string[];
+  currentUserId?: string;
 }) {
-  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds } = params;
+  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
   let conds = isNull(purchaseRequests.deletedAt);
   if (status !== undefined) {
     conds = and(conds, eq(purchaseRequests.status, status))!;
@@ -63,6 +64,18 @@ function buildFilterCondition(params: {
   if (visibleWarehouseIds && visibleWarehouseIds.length > 0) {
     conds = and(conds, inArray(purchaseRequests.warehouseId, visibleWarehouseIds))!;
   }
+  
+  // Custom logic: Cancelled PRs (status = 4) are only visible to the user who created them
+  if (currentUserId) {
+    // Show PR if: status is NOT 4, OR (status IS 4 AND requestedBy IS currentUserId)
+    const notCancelled = ne(purchaseRequests.status, 4);
+    const isCancelledAndMine = and(
+      eq(purchaseRequests.status, 4),
+      eq(purchaseRequests.requestedBy, currentUserId)
+    );
+    conds = and(conds, or(notCancelled, isCancelledAndMine))!;
+  }
+
   if (searchTerm) {
     const term = searchTerm.trim();
     if (term !== "") {
@@ -105,10 +118,11 @@ export class PurchaseRequestModel {
     customerId?: string;
     requestedByUserId?: string;
     visibleWarehouseIds?: string[];
+    currentUserId?: string;
   }): Promise<PurchaseRequestDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseRequests.findMany({
@@ -121,7 +135,15 @@ export class PurchaseRequestModel {
         warehouse: true,
         requester: true,
         details: {
-          where: isNull(purchaseRequestDetails.deletedAt)
+          where: isNull(purchaseRequestDetails.deletedAt),
+          with: {
+            item: {
+              with: {
+                category: true,
+                uom: true,
+              }
+            }
+          }
         },
         approvals: {
           with: {
@@ -134,7 +156,7 @@ export class PurchaseRequestModel {
     return result.map(toPurchaseRequestDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[] }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause as any);
     return result[0]?.total ?? 0;
@@ -156,7 +178,12 @@ export class PurchaseRequestModel {
         details: {
           where: isNull(purchaseRequestDetails.deletedAt),
           with: {
-            item: true
+            item: {
+              with: {
+                category: true,
+                uom: true,
+              }
+            }
           }
         }
       }
@@ -168,7 +195,7 @@ export class PurchaseRequestModel {
     customerId?: string | null;
     warehouseId: string;
     description?: string;
-    details: { itemId: string; quantity: number; price: number; remark?: string; attachmentUrl?: string }[];
+    details: { itemId: string; quantity: number; price: number; remark?: string | null; attachmentUrl?: string | null }[];
   }, userId: string): Promise<PurchaseRequestDTO | undefined> {
     // Validate approvers
     const approvers = await this.getApprovers(payload.warehouseId);
@@ -223,7 +250,7 @@ export class PurchaseRequestModel {
       customerId?: string | null;
       warehouseId?: string;
       description?: string;
-      details?: { itemId: string; quantity: number; price: number; remark?: string; attachmentUrl?: string }[];
+      details?: { itemId: string; quantity: number; price: number; remark?: string | null; attachmentUrl?: string | null }[];
     },
     userId?: string
   ): Promise<PurchaseRequestDTO | undefined> {
@@ -500,7 +527,7 @@ export class PurchaseRequestModel {
               );
 
             // Auto-process approved PR: create inbound transaction + upsert inventory
-            await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
+            // await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
           } else {
             // Regular approval flow
             if (pr.currentApprovalStage === 0) {
@@ -551,7 +578,7 @@ export class PurchaseRequestModel {
               updatePayload.approvedAt = new Date();
 
               // Auto-process approved PR: create inbound transaction + upsert inventory
-              await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
+              // await PurchaseRequestModel.autoProcessApprovedPR(tx, id, pr.code, pr.warehouseId, userId);
             }
           }
         } else {
@@ -572,16 +599,16 @@ export class PurchaseRequestModel {
     return await this.findById(result);
   }
 
-  static async softDelete(id: string): Promise<boolean> {
+  static async softDelete(id: string, userId?: string): Promise<boolean> {
     const existingPR = await db.query.purchaseRequests.findFirst({
       where: and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt))
     });
     if (!existingPR) return false;
-    if (existingPR.status !== 0) throw new Error("Hanya Purchase Request berstatus Draft yang dapat dihapus.");
 
+    // Set status to 4 (Cancelled) instead of soft delete
     const result = await db
       .update(purchaseRequests)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .set({ status: 4, updatedAt: new Date(), updatedBy: userId })
       .where(and(eq(purchaseRequests.id, id), isNull(purchaseRequests.deletedAt)))
       .returning({ id: purchaseRequests.id });
     return result.length > 0;

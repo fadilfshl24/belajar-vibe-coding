@@ -10,6 +10,7 @@ const updatePermissionSchema = z.object({
   canCreate: z.boolean().default(false),
   canUpdate: z.boolean().default(false),
   canDelete: z.boolean().default(false),
+  canAccessApi: z.boolean().default(false),
 });
 
 export function parseUpdatePermissionInput(body: unknown) {
@@ -40,6 +41,7 @@ const updatePermissionByRoleSchema = z.object({
   canCreate: z.boolean().default(false),
   canUpdate: z.boolean().default(false),
   canDelete: z.boolean().default(false),
+  canAccessApi: z.boolean().default(false),
 });
 
 const bulkUpdateByRoleSchema = z.object({
