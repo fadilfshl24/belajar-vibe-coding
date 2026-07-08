@@ -14,8 +14,10 @@ export const CHILD_MENUS: Record<string, any[]> = {
     { name: "Barang Masuk", code: "barang_masuk", path: "/stock-orders/inbound", sortOrder: 1, icon: "arrow-up-right", isActive: true },
     { name: "Barang Keluar", code: "barang_keluar", path: "/stock-orders/outbound", sortOrder: 2, icon: "arrow-down-right", isActive: true },
     { name: "Purchase Request", code: "purchase_request", path: "/purchase-requests", sortOrder: 3, icon: "file-text", isActive: true },
-    { name: "Purchase Order", code: "purchase_order", path: "/purchase-orders", sortOrder: 4, icon: "shopping-cart", isActive: true },
-    { name: "Mutasi Stok", code: "inventory_mutations", path: "/inventory/mutations", sortOrder: 5, icon: "activity", isActive: true },
+    { name: "Quotation Plan", code: "quotation_plan", path: "/quotation-plans", sortOrder: 4, icon: "clipboard-list", isActive: true },
+    { name: "Purchase Order", code: "purchase_order", path: "/purchase-orders", sortOrder: 5, icon: "shopping-cart", isActive: true },
+    { name: "Mutasi Stok", code: "inventory_mutations", path: "/inventory/mutations", sortOrder: 6, icon: "activity", isActive: true },
+    { name: "History Price", code: "history_price", path: "/reports/history-price", sortOrder: 7, icon: "bar-chart", isActive: true },
   ],
   master_data: [
     { name: "Master Barang", code: "item", path: "/items", sortOrder: 1, icon: "package", isActive: true },
@@ -33,6 +35,7 @@ export const CHILD_MENUS: Record<string, any[]> = {
     { name: "Permissions", code: "permission_management", path: "/permissions", sortOrder: 4, icon: "shield-check", isActive: true },
     { name: "Activity Logs", code: "activity_log", path: "/activity-logs", sortOrder: 5, icon: "activity", isActive: true },
     { name: "User Mappings", code: "user_warehouse_mapping", path: "/settings/user-warehouse-mappings", sortOrder: 6, icon: "map", isActive: true },
+    { name: "Approval Steps", code: "approval_step", path: "/settings/approval-steps", sortOrder: 7, icon: "check-square", isActive: true },
   ],
 };
 

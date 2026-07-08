@@ -42,6 +42,7 @@ export const purchaseRequestDetails = pgTable(
     totalPrice: decimal("total_price", { precision: 18, scale: 2 }).notNull().default("0"),
     remark: text("remark"),
     attachmentUrl: varchar("attachment_url", { length: 500 }),
+    processedQuantity: integer("processed_quantity").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
   },
@@ -114,6 +115,10 @@ export const purchaseRequestApprovalsRelations = relations(purchaseRequestApprov
     fields: [purchaseRequestApprovals.approvedBy],
     references: [users.id],
   }),
+}));
+
+export const purchaseRequestsPivotRelations = relations(purchaseRequests, ({ many }) => ({
+  quotationPlans: many(require("../quotation-plan/quotation-plan.schema").quotationPlanPurchaseRequests),
 }));
 
 export type PurchaseRequestRecord = typeof purchaseRequests.$inferSelect;
