@@ -11,6 +11,7 @@ import {
 import { auditColumns } from "../../core/db/audit";
 import { uoms } from "../uom/uom.schema";
 import { itemCategories } from "../category/category.schema";
+import { vendors } from "../vendor/vendor.schema";
 
 /**
  * Enum: item_type
@@ -107,6 +108,26 @@ export type ItemRecord = typeof items.$inferSelect;
 export type ItemInsert = typeof items.$inferInsert;
 export type ItemPackageDetailRecord = typeof itemPackageDetails.$inferSelect;
 export type ItemPackageDetailInsert = typeof itemPackageDetails.$inferInsert;
+
+export const itemPriceHistories = pgTable(
+  "item_price_histories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    itemId: uuid("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+    vendorId: uuid("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+    price: decimal("price", { precision: 18, scale: 2 }).notNull(),
+    sourceType: varchar("source_type", { length: 50 }).notNull(), // 'QUOTATION', 'PO', 'MANUAL'
+    sourceId: uuid("source_id"), // quotation_plan_details.id etc
+    effectiveDate: text("effective_date").notNull(), // using date string YYYY-MM-DD or timestamp
+    ...auditColumns,
+  },
+  (t) => [
+    index("idx_item_price_item_id").on(t.itemId),
+    index("idx_item_price_vendor_id").on(t.vendorId),
+  ]
+);
+
+export type ItemPriceHistoryRecord = typeof itemPriceHistories.$inferSelect;
 
 import { relations } from "drizzle-orm";
 

@@ -8,9 +8,6 @@ export const purchaseRequestRoutes = new Elysia({ prefix: "/api/purchase-request
   .get("/", PurchaseRequestController.getAll, {
     beforeHandle: [permissionGuard("purchase_request", "canView")],
   })
-  .get("/approvers/:warehouseId", PurchaseRequestController.getApprovers, {
-    beforeHandle: [permissionGuard("purchase_request", "canView")],
-  })
   .get("/:id", PurchaseRequestController.getById, {
     beforeHandle: [permissionGuard("purchase_request", "canView")],
   })

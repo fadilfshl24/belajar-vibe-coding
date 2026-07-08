@@ -60,6 +60,7 @@ export const DEFAULT_PERMISSIONS: PermissionEntry[] = [
   { roleName: "superadmin", menuCode: "purchase_order", ...ALL },
   { roleName: "superadmin", menuCode: "user_warehouse_mapping", ...ALL },
   { roleName: "superadmin", menuCode: "inventory_mutations", ...VIEW_ONLY },
+  { roleName: "superadmin", menuCode: "approval_step", ...ALL },
 
   // --- Admin ---
   { roleName: "admin", menuCode: "dashboard", ...ALL },

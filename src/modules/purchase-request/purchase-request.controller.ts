@@ -365,23 +365,4 @@ export class PurchaseRequestController {
       return failedResponse(correlationId, "Failed to delete purchase request", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
-
-  static async getApprovers(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
-
-    try {
-      const warehouseId = (ctx.params as Record<string, string>).warehouseId;
-      if (!warehouseId) {
-        ctx.set.status = 400;
-        return failedResponse(correlationId, "Warehouse ID is required", 400);
-      }
-
-      const approvers = await PurchaseRequestModel.getApprovers(warehouseId);
-      
-      return successResponse(correlationId, "Approvers fetched successfully", approvers);
-    } catch (err: unknown) {
-      ctx.set.status = 500;
-      return failedResponse(correlationId, "Failed to fetch approvers", 500, err instanceof Error ? err.message : "Unknown error");
-    }
-  }
 }

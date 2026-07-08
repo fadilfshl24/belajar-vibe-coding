@@ -197,11 +197,7 @@ export class PurchaseRequestModel {
     description?: string;
     details: { itemId: string; quantity: number; price: number; remark?: string | null; attachmentUrl?: string | null }[];
   }, userId: string): Promise<PurchaseRequestDTO | undefined> {
-    // Validate approvers
-    const approvers = await this.getApprovers(payload.warehouseId);
-    if (!approvers.warehouseHeads.length || !approvers.branchHeads.length) {
-      throw new Error("Gudang tujuan belum memiliki Kepala Gudang atau Kepala Cabang untuk proses persetujuan.");
-    }
+    // Validate approvers - removed as we are using dynamic approval steps now
 
     const result = await db.transaction(async (tx) => {
       const code = await generatePRCode();
@@ -614,60 +610,5 @@ export class PurchaseRequestModel {
     return result.length > 0;
   }
 
-  static async getApprovers(warehouseId: string) {
-    const specificRolesData = await db
-      .select({
-        userId: users.id,
-        userName: users.name,
-        userEmail: users.email,
-        roleCode: roles.code
-      })
-      .from(userWarehouseRoles)
-      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
-      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
-      .where(
-        and(
-          isNull(userWarehouseRoles.deletedAt),
-          isNull(users.deletedAt)
-        )
-      );
-    
-    // Filter in memory for simplicity
-    const managers = specificRolesData.filter(r => r.roleCode === "manager");
-    
-    const warehouseData = await db
-      .select({
-        userId: users.id,
-        userName: users.name,
-        userEmail: users.email,
-        roleCode: roles.code
-      })
-      .from(userWarehouseRoles)
-      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
-      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
-      .innerJoin(userWarehouseMappings, eq(userWarehouseMappings.userId, users.id))
-      .where(
-        and(
-          eq(userWarehouseMappings.warehouseId, warehouseId),
-          eq(userWarehouseMappings.isActive, true),
-          isNull(userWarehouseMappings.deletedAt),
-          isNull(userWarehouseRoles.deletedAt),
-          isNull(users.deletedAt)
-        )
-      );
 
-    const warehouseHeads = warehouseData.filter(r => r.roleCode === "warehouse_head");
-    const branchHeads = warehouseData.filter(r => r.roleCode === "branch_head");
-
-    // Remove duplicates
-    const uniqueManagers = Array.from(new Map(managers.map(item => [item.userId, item])).values());
-    const uniqueWHHeads = Array.from(new Map(warehouseHeads.map(item => [item.userId, item])).values());
-    const uniqueBranchHeads = Array.from(new Map(branchHeads.map(item => [item.userId, item])).values());
-
-    return {
-      warehouseHeads: uniqueWHHeads,
-      branchHeads: uniqueBranchHeads,
-      managers: uniqueManagers
-    };
-  }
 }

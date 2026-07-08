@@ -21,6 +21,9 @@ import { purchaseOrderRoutes } from "./modules/purchase-order";
 import { userWarehouseMappingRoutes } from "./modules/user-warehouse-mapping";
 import { warehouseRegionRoutes } from "./modules/warehouse/warehouse.routes";
 import { uploadRoutes } from "./modules/upload/upload.routes";
+import { quotationPlanRoutes } from "./modules/quotation-plan/quotation-plan.routes";
+import { reportRoutes } from "./modules/report/report.routes";
+import { approvalStepRoutes } from "./modules/approval-step";
 import { staticPlugin } from "@elysiajs/static";
 
 /**
@@ -56,6 +59,7 @@ export const app = new Elysia()
   .use(menuRoutes)
   .use(permissionRoutes)
   .use(activityLogRoutes)
+  .use(approvalStepRoutes)
   // Master Data Modules
   .use(warehouseRoutes)
   .use(categoryRoutes)
@@ -65,12 +69,14 @@ export const app = new Elysia()
   .use(vendorRoutes)
   .use(platformRoutes)
   // Transaction & Inventory Modules
-  .use(transactionRoutes)
   .use(inventoryRoutes)
   .use(dashboardRoutes)
   .use(regionRoutes)
   .use(purchaseRequestRoutes)
   .use(purchaseOrderRoutes)
+  .use(quotationPlanRoutes)
+  .use(reportRoutes)
+  .use(transactionRoutes)
   .use(userWarehouseMappingRoutes)
   .use(warehouseRegionRoutes)
   .use(uploadRoutes)

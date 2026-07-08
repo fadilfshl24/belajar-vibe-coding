@@ -16,3 +16,5 @@ export * from "../../modules/transaction/transaction.schema";
 export * from "../../modules/user/user.schema";
 export * from "../../modules/vendor/vendor.schema";
 export * from "../../modules/warehouse/warehouse.schema";
+export * from "../../modules/quotation-plan/quotation-plan.schema";
+export * from "../../modules/approval-step/approval-step.schema";
