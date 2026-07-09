@@ -7,7 +7,7 @@ const createMenuSchema = z.object({
     .string()
     .min(2)
     .max(255)
-    .regex(/^[a-z_]+$/, "Code must be lowercase with underscores only (e.g., master_data)"),
+    .regex(/^[A-Za-z0-9_-]+$/, "Code must contain only letters, numbers, hyphens, and underscores"),
   path: z
     .string()
     .min(1)
