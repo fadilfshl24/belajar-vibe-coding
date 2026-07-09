@@ -22,4 +22,7 @@ export const purchaseRequestRoutes = new Elysia({ prefix: "/api/purchase-request
   })
   .delete("/:id", PurchaseRequestController.delete, {
     beforeHandle: [permissionGuard("purchase_request", "canDelete")],
+  })
+  .get("/approvers/:warehouseId", PurchaseRequestController.getApprovers, {
+    beforeHandle: [permissionGuard("purchase_request", "canView")],
   });

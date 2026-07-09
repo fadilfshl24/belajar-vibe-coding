@@ -118,7 +118,11 @@ export class QuotationPlanModel {
       conditions.push(sql`${quotationPlans.code} ILIKE ${`%${params.search}%`}`);
     }
     if (params.purchaseRequestId) {
-      conditions.push(eq(quotationPlans.purchaseRequestId, params.purchaseRequestId));
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${quotationPlanPurchaseRequests} qpr 
+        WHERE qpr.quotation_plan_id = ${quotationPlans.id} 
+        AND qpr.purchase_request_id = ${params.purchaseRequestId}
+      )`);
     }
     if (params.warehouseIds && params.warehouseIds.length > 0) {
       conditions.push(inArray(quotationPlans.warehouseId, params.warehouseIds));
@@ -152,6 +156,11 @@ export class QuotationPlanModel {
               }
             },
             vendor: true,
+            purchaseRequestDetail: {
+              with: {
+                purchaseRequest: true
+              }
+            }
           }
         },
         approvals: {
@@ -245,6 +254,7 @@ export class QuotationPlanModel {
       const grandTotal = items.reduce((acc: number, d: any) => acc + Number(d.totalPrice), 0);
       
       const [po] = await tx.insert(purchaseOrders).values({
+        quotationPlanId: qp.id,
         warehouseId: qp.warehouseId,
         vendorId: vendorId,
         code: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(Math.random() * 10000)}`,
@@ -278,6 +288,7 @@ export class QuotationPlanModel {
       const poDetails = items.map((d: any) => ({
         purchaseOrderId: po.id,
         purchaseRequestDetailId: d.purchaseRequestDetailId,
+        quotationPlanDetailId: d.id,
         itemId: d.itemId,
         quantity: d.offeredQuantity, // PO quantity is offered quantity
         price: d.price,

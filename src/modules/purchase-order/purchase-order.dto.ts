@@ -7,6 +7,7 @@ import type { UserDTO } from "../user/user.dto";
 
 export type PODetailDTO = Omit<PurchaseOrderDetailRecord, "deletedAt"> & {
   item?: ItemDTO;
+  quotationPlanDetail?: any;
 };
 
 export type POApprovalDTO = Omit<PurchaseOrderApprovalRecord, "deletedAt"> & {
@@ -21,13 +22,13 @@ export type PurchaseOrderDTO = Omit<PurchaseOrderRecord, "deletedAt"> & {
   details?: PODetailDTO[];
   vendor?: VendorDTO | null;
   warehouse?: WarehouseDTO | null;
-  purchaseRequest?: PurchaseRequestDTO | null; // deprecated single PR
+  quotationPlan?: any | null;
   purchaseRequests?: PORequestDTO[];           // new: multi-PR list
   approvals?: POApprovalDTO[];
 };
 
 export function toPurchaseOrderDTO(record: any): PurchaseOrderDTO {
-  const { deletedAt, details, vendor, warehouse, purchaseRequest, purchaseRequests, approvals, approvedByUser, ...dto } = record;
+  const { deletedAt, details, vendor, warehouse, quotationPlan, purchaseRequests, approvals, approvedByUser, ...dto } = record;
 
   if (details) {
     dto.details = details.map((d: any) => {
@@ -35,6 +36,14 @@ export function toPurchaseOrderDTO(record: any): PurchaseOrderDTO {
       if (item) {
         const { deletedAt: iDelAt, ...iDto } = item;
         dDto.item = iDto;
+      }
+      if (d.quotationPlanDetail) {
+        const { deletedAt: qpDelAt, quotationPlan, ...qpDto } = d.quotationPlanDetail;
+        if (quotationPlan) {
+           const { deletedAt: qDelAt, ...qDto } = quotationPlan;
+           qpDto.quotationPlan = qDto;
+        }
+        dDto.quotationPlanDetail = qpDto;
       }
       return dDto;
     });
@@ -48,9 +57,9 @@ export function toPurchaseOrderDTO(record: any): PurchaseOrderDTO {
     const { deletedAt: wDelAt, ...wDto } = warehouse;
     dto.warehouse = wDto;
   }
-  if (purchaseRequest) {
-    const { deletedAt: prDelAt, details: prDetails, ...prDto } = purchaseRequest;
-    dto.purchaseRequest = prDto;
+  if (quotationPlan) {
+    const { deletedAt: qpDelAt, ...qpDto } = quotationPlan;
+    dto.quotationPlan = qpDto;
   }
   if (purchaseRequests) {
     dto.purchaseRequests = purchaseRequests.map((por: any) => {

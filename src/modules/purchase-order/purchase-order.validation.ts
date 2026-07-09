@@ -3,6 +3,7 @@ import { z } from "zod";
 export const poDetailSchema = z.object({
   itemId: z.string().uuid("Invalid item ID"),
   purchaseRequestDetailId: z.string().uuid().optional().nullable().or(z.literal("")),
+  quotationPlanDetailId: z.string().uuid().optional().nullable().or(z.literal("")),
   quantity: z.number().int().min(1, "Quantity must be at least 1"),
   price: z.number().min(0, "Price cannot be negative").default(0),
   remark: z.string().optional().nullable().or(z.literal("")),

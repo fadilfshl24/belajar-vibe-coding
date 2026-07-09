@@ -15,7 +15,7 @@ export const purchaseRequests = pgTable(
     customerId: uuid("customer_id").references(() => customers.id),
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id),
     description: text("description"),
-    status: integer("status").notNull().default(0), // 0=Draft, 1=Pending, 2=Approved, 3=Rejected, 4=Closed
+    status: integer("status").notNull().default(0), // 0=Draft, 1=Pending, 2=Approved, 3=Rejected, 4=Closed, 5=Completed
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at"),

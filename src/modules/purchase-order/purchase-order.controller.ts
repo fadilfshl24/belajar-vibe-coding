@@ -13,9 +13,11 @@ import {
 import { failedResponse, successResponse, type PaginationMeta } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
 import { logActivity } from "../../core/utils/activityLogger";
-
+import { db } from "../../core/db";
+import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
+import { eq, and, isNull } from "drizzle-orm";
 export class PurchaseOrderController {
-  static async getAll(ctx: Context) {
+  static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
 
     try {
@@ -26,9 +28,43 @@ export class PurchaseOrderController {
       }
 
       const params = parsed.data;
+
+      // ── Role-Based Visibility ─────────────────────────────────────────────────
+      let visibleWarehouseIds: string[] | undefined = undefined;
+
+      const userId = ctx.user?.sub;
+      if (userId) {
+        // Fetch user roles
+        const userRoleRows = await db
+          .select({ roleCode: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(and(isNull(userWarehouseRoles.deletedAt), eq(userWarehouseRoles.userId, userId)));
+
+        const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
+        const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin"].includes(r));
+        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head", "manager"].includes(r));
+
+        if (!isGlobalViewer && isRestrictedByWarehouse) {
+          // WH Head / Branch Head / Manager: see POs from their mapped warehouses
+          const mappings = await db
+            .select({ warehouseId: userWarehouseMappings.warehouseId })
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.isActive, true),
+                isNull(userWarehouseMappings.deletedAt)
+              )
+            );
+          visibleWarehouseIds = mappings.map((m) => m.warehouseId);
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       const [totalRecord, records] = await Promise.all([
-        PurchaseOrderModel.countAll(params),
-        PurchaseOrderModel.findAll(params),
+        PurchaseOrderModel.countAll({ ...params, visibleWarehouseIds }),
+        PurchaseOrderModel.findAll({ ...params, visibleWarehouseIds }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;

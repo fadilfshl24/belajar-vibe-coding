@@ -12,12 +12,12 @@ export const purchaseOrders = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     code: varchar("code", { length: 100 }).notNull().unique(),
-    purchaseRequestId: uuid("purchase_request_id").references(() => purchaseRequests.id),
+    quotationPlanId: uuid("quotation_plan_id"),
     vendorId: uuid("vendor_id").notNull().references(() => vendors.id),
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id),
     orderDate: date("order_date").notNull(),
     expectedDeliveryDate: date("expected_delivery_date"),
-    status: integer("status").notNull().default(0), // 0=Draft, 1=Pending Approval, 2=Approved, 3=Rejected, 4=Sent, 5=Partial Received, 6=Fully Received, 7=Cancelled
+    status: integer("status").notNull().default(0), // 0=Draft, 1 = Pending Approval, 2=Approved, 3=Rejected, 4=Sent, 5=Partial Received, 6=Fully Received, 7=Cancelled
     currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER, 3=DONE
     approvedBy: uuid("approved_by").references(() => users.id),
     approvedAt: timestamp("approved_at"),
@@ -48,6 +48,7 @@ export const purchaseOrderDetails = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
     purchaseRequestDetailId: uuid("purchase_request_detail_id"), // traceability to source PR detail
+    quotationPlanDetailId: uuid("quotation_plan_detail_id"), // traceability to source QP detail
     itemId: uuid("item_id").notNull().references(() => items.id),
     quantity: integer("quantity").notNull(),
     receivedQuantity: integer("received_quantity").notNull().default(0),
@@ -101,9 +102,9 @@ export const purchaseOrderApprovals = pgTable(
 );
 
 export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
-  purchaseRequest: one(purchaseRequests, {
-    fields: [purchaseOrders.purchaseRequestId],
-    references: [purchaseRequests.id],
+  quotationPlan: one(require("../quotation-plan/quotation-plan.schema").quotationPlans, {
+    fields: [purchaseOrders.quotationPlanId],
+    references: [require("../quotation-plan/quotation-plan.schema").quotationPlans.id],
   }),
   vendor: one(vendors, {
     fields: [purchaseOrders.vendorId],
@@ -126,6 +127,10 @@ export const purchaseOrderDetailsRelations = relations(purchaseOrderDetails, ({ 
   purchaseOrder: one(purchaseOrders, {
     fields: [purchaseOrderDetails.purchaseOrderId],
     references: [purchaseOrders.id],
+  }),
+  quotationPlanDetail: one(require("../quotation-plan/quotation-plan.schema").quotationPlanDetails, {
+    fields: [purchaseOrderDetails.quotationPlanDetailId],
+    references: [require("../quotation-plan/quotation-plan.schema").quotationPlanDetails.id],
   }),
   item: one(items, {
     fields: [purchaseOrderDetails.itemId],
