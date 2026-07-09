@@ -9,7 +9,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
-import { purchaseRequests } from "../purchase-request/purchase-request.schema";
+import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
 import { items } from "../item/item.schema";
 import { vendors } from "../vendor/vendor.schema";
@@ -133,6 +133,10 @@ export const quotationPlanDetailsRelations = relations(quotationPlanDetails, ({ 
   vendor: one(vendors, {
     fields: [quotationPlanDetails.vendorId],
     references: [vendors.id],
+  }),
+  purchaseRequestDetail: one(purchaseRequestDetails, {
+    fields: [quotationPlanDetails.purchaseRequestDetailId],
+    references: [purchaseRequestDetails.id],
   }),
 }));
 

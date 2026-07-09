@@ -14,6 +14,7 @@ import { logActivity } from "../../core/utils/activityLogger";
 import { db } from "../../core/db";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
+import { users } from "../user/user.schema";
 
 export class PurchaseRequestController {
   static async getAll(ctx: Context & { user?: JwtPayload }) {
@@ -363,6 +364,53 @@ export class PurchaseRequestController {
     } catch (err: unknown) {
       ctx.set.status = 500;
       return failedResponse(correlationId, "Failed to delete purchase request", 500, err instanceof Error ? err.message : "Unknown error");
+    }
+  }
+
+  static async getApprovers(ctx: Context) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    try {
+      const warehouseId = (ctx.params as Record<string, string>).warehouseId;
+      if (!warehouseId) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Warehouse ID is required", 400);
+      }
+
+      const approversRows = await db
+        .select({
+          userId: users.id,
+          userName: users.name,
+          userEmail: users.email,
+          roleCode: roles.code,
+        })
+        .from(userWarehouseMappings)
+        .innerJoin(users, eq(userWarehouseMappings.userId, users.id))
+        .innerJoin(userWarehouseRoles, eq(userWarehouseRoles.userId, users.id))
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseMappings.warehouseId, warehouseId),
+            inArray(roles.code, ["warehouse_head", "branch_head", "manager"]),
+            eq(userWarehouseMappings.isActive, true),
+            isNull(userWarehouseMappings.deletedAt),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt),
+            isNull(users.deletedAt)
+          )
+        );
+
+      const warehouseHeads = approversRows.filter((r) => r.roleCode === "warehouse_head");
+      const branchHeads = approversRows.filter((r) => r.roleCode === "branch_head");
+      const managers = approversRows.filter((r) => r.roleCode === "manager");
+
+      return successResponse(correlationId, "Approvers found", {
+        warehouseHeads,
+        branchHeads,
+        managers,
+      });
+    } catch (err: unknown) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 }

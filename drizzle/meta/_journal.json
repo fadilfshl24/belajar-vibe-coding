@@ -155,6 +155,20 @@
       "when": 1783481804630,
       "tag": "0021_tense_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783569850604,
+      "tag": "0022_oval_pandemic",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783570751347,
+      "tag": "0023_fair_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }
