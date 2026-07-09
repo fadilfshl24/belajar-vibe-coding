@@ -24,8 +24,8 @@ import { uploadRoutes } from "./modules/upload/upload.routes";
 import { quotationPlanRoutes } from "./modules/quotation-plan/quotation-plan.routes";
 import { reportRoutes } from "./modules/report/report.routes";
 import { approvalStepRoutes } from "./modules/approval-step";
+import { goodsReceiptRoutes } from "./modules/goods-receipt";
 import { staticPlugin } from "@elysiajs/static";
-
 /**
  * App Factory
  *
@@ -75,6 +75,7 @@ export const app = new Elysia()
   .use(purchaseRequestRoutes)
   .use(purchaseOrderRoutes)
   .use(quotationPlanRoutes)
+  .use(goodsReceiptRoutes)
   .use(reportRoutes)
   .use(transactionRoutes)
   .use(userWarehouseMappingRoutes)
