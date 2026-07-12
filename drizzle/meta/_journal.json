@@ -169,6 +169,20 @@
       "when": 1783579572334,
       "tag": "0024_bizarre_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783615520880,
+      "tag": "0025_cooing_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783802293687,
+      "tag": "0026_cynical_omega_red",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ import { warehouses } from "../warehouse/warehouse.schema";
 import { items } from "../item/item.schema";
 import { users } from "../user/user.schema";
 
-export const transactionTypeEnum = pgEnum("transaction_type", ["IN", "OUT"]);
+export const transactionTypeEnum = pgEnum("transaction_type", ["IN", "OUT", "REJECT"]);
 export const transactionStatusEnum = pgEnum("transaction_status", ["DRAFT", "COMPLETED", "CANCEL_PENDING", "CANCELLED"]);
 export const approvalStatusEnum = pgEnum("approval_status", ["PENDING", "APPROVED", "REJECTED"]);
 export const approvalTypeEnum = pgEnum("approval_type", ["CANCEL"]);

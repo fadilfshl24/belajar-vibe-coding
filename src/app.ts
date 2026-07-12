@@ -9,6 +9,7 @@ import { warehouseRoutes } from "./modules/warehouse";
 import { categoryRoutes } from "./modules/category";
 import { uomRoutes } from "./modules/uom";
 import { itemRoutes } from "./modules/item";
+import { itemPlatformSkuRoutes } from "./modules/item-platform-sku";
 import { transactionRoutes } from "./modules/transaction/transaction.routes";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes";
 import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
@@ -25,6 +26,7 @@ import { quotationPlanRoutes } from "./modules/quotation-plan/quotation-plan.rou
 import { reportRoutes } from "./modules/report/report.routes";
 import { approvalStepRoutes } from "./modules/approval-step";
 import { goodsReceiptRoutes } from "./modules/goods-receipt";
+import { qualityControlRoutes } from "./modules/quality-control";
 import { staticPlugin } from "@elysiajs/static";
 /**
  * App Factory
@@ -65,6 +67,7 @@ export const app = new Elysia()
   .use(categoryRoutes)
   .use(uomRoutes)
   .use(itemRoutes)
+  .use(itemPlatformSkuRoutes)
   .use(customerRoutes)
   .use(vendorRoutes)
   .use(platformRoutes)
@@ -76,6 +79,7 @@ export const app = new Elysia()
   .use(purchaseOrderRoutes)
   .use(quotationPlanRoutes)
   .use(goodsReceiptRoutes)
+  .use(qualityControlRoutes)
   .use(reportRoutes)
   .use(transactionRoutes)
   .use(userWarehouseMappingRoutes)

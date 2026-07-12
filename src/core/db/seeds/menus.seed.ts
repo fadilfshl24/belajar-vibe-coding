@@ -7,6 +7,7 @@ export const PARENT_MENUS = [
   { name: "Transaksi", code: "transaksi", path: "/transaksi", sortOrder: 2, icon: "arrow-up-right", isActive: true },
   { name: "Master Data", code: "master_data", path: "/master-data", sortOrder: 3, icon: "package", isActive: true },
   { name: "Administrasi", code: "administrasi", path: "/administrasi", sortOrder: 4, icon: "shield-check", isActive: true },
+  { name: "Quality Control", code: "quality_control", path: "/quality-controls", sortOrder: 5, icon: "clipboard-check", isActive: true },
 ];
 
 export const CHILD_MENUS: Record<string, any[]> = {
