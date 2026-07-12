@@ -7,7 +7,7 @@ export const approvalSteps = pgTable(
   "approval_steps",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    documentType: varchar("document_type", { length: 20 }).notNull(), // 'PR', 'QP', 'PO'
+    documentType: varchar("document_type", { length: 20 }).notNull(), // 'PR', 'QP', 'PO', 'QC'
     stage: integer("stage").notNull(), // 0, 1, 2, etc.
     roleId: uuid("role_id").notNull().references(() => roles.id),
     isActive: boolean("is_active").notNull().default(true),
