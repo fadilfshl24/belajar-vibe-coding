@@ -2,8 +2,8 @@ import { eq, desc, and, ilike, or, count, sql, isNull } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
-import { CreateGoodsReceiptInput } from "./goods-receipt.validation";
-import { toGoodsReceiptDTO, GoodsReceiptDTO } from "./goods-receipt.dto";
+import { toGoodsReceiptDTO, type GoodsReceiptDTO } from "./goods-receipt.dto";
+import type { CreateGoodsReceiptInput } from "./goods-receipt.validation";
 
 async function generateGRCode(): Promise<string> {
   const today = new Date();
@@ -46,10 +46,13 @@ export class GoodsReceiptModel {
     if (search && filterColumn) {
       if (filterColumn === "code") conditions.push(ilike(goodsReceipts.code, `%${search}%`));
     } else if (search) {
-      conditions.push(or(
+      const searchCondition = or(
         ilike(goodsReceipts.code, `%${search}%`),
         ilike(goodsReceipts.deliveryNoteNumber, `%${search}%`)
-      ));
+      );
+      if (searchCondition) {
+        conditions.push(searchCondition);
+      }
     }
 
     if (status !== undefined) conditions.push(eq(goodsReceipts.status, status));
@@ -75,10 +78,10 @@ export class GoodsReceiptModel {
 
     return {
       data: data.map(toGoodsReceiptDTO),
-      total: totalCount[0].count,
+      total: totalCount[0]?.count ?? 0,
       page,
       limit,
-      totalPages: Math.ceil(totalCount[0].count / limit),
+      totalPages: Math.ceil(totalCount[0]?.count ?? 0 / limit),
     };
   }
 
