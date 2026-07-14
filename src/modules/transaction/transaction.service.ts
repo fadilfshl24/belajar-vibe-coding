@@ -61,7 +61,8 @@ export class TransactionService {
             await tx
               .update(inventoryStocks)
               .set({ 
-                quantity: (Number(stock.quantity) + qty).toString(), 
+                physicalQty: (Number(stock.physicalQty) + qty).toString(), 
+                availableQty: (Number(stock.availableQty) + qty).toString(), 
                 updatedAt: new Date(),
                 updatedBy: userId
               })
@@ -70,19 +71,22 @@ export class TransactionService {
             await tx.insert(inventoryStocks).values({
               warehouseId: txData.warehouseId,
               itemId: item.itemId,
-              quantity: qty.toString(),
+              physicalQty: qty.toString(),
+              availableQty: qty.toString(),
+              reservedQty: "0.00",
               createdBy: userId,
               updatedBy: userId,
             });
           }
         } else if (txData.type === "OUT") {
-          if (!stock || Number(stock.quantity) < qty) {
+          if (!stock || Number(stock.physicalQty) < qty) {
             throw new Error(`Insufficient stock for item ${item.itemId}`);
           }
           await tx
             .update(inventoryStocks)
             .set({ 
-              quantity: (Number(stock.quantity) - qty).toString(), 
+              physicalQty: (Number(stock.physicalQty) - qty).toString(), 
+              availableQty: (Number(stock.availableQty) - qty).toString(), 
               updatedAt: new Date(),
               updatedBy: userId
             })
@@ -94,6 +98,50 @@ export class TransactionService {
       await txData.status;
       await TransactionModel.updateStatus(transactionId, "COMPLETED", userId);
     });
+  }
+
+  static async cancel(transactionId: string, approvedBy: string) {
+    const txData = await TransactionModel.findById(transactionId);
+    if (txData && txData.status === "COMPLETED") {
+      if (!txData) return;
+
+      await db.transaction(async (tx) => {
+        for (const item of txData.items) {
+          const [stock] = await tx
+            .select()
+            .from(inventoryStocks)
+            .where(and(eq(inventoryStocks.warehouseId, txData.warehouseId), eq(inventoryStocks.itemId, item.itemId)))
+            .limit(1);
+          
+          if (stock) {
+            const qty = Number(item.quantity);
+            if (txData.type === "IN") {
+              // Revert IN -> subtract
+              await tx
+                .update(inventoryStocks)
+                .set({ 
+                  physicalQty: (Number(stock.physicalQty) - qty).toString(), 
+                  availableQty: (Number(stock.availableQty) - qty).toString(), 
+                  updatedAt: new Date(),
+                  updatedBy: approvedBy
+                })
+                .where(eq(inventoryStocks.id, stock.id));
+            } else {
+              // Revert OUT -> add
+              await tx
+                .update(inventoryStocks)
+                .set({ 
+                  physicalQty: (Number(stock.physicalQty) + qty).toString(), 
+                  availableQty: (Number(stock.availableQty) + qty).toString(), 
+                  updatedAt: new Date(),
+                  updatedBy: approvedBy
+                })
+                .where(eq(inventoryStocks.id, stock.id));
+            }
+          }
+        }
+      });
+    }
   }
 
   static async approveCancellation(approvalId: string, approvedBy: string, status: "APPROVED" | "REJECTED", responseRemark?: string) {
@@ -119,7 +167,8 @@ export class TransactionService {
               await tx
                 .update(inventoryStocks)
                 .set({ 
-                  quantity: (Number(stock.quantity) - qty).toString(), 
+                  physicalQty: (Number(stock.physicalQty) - qty).toString(), 
+                  availableQty: (Number(stock.availableQty) - qty).toString(), 
                   updatedAt: new Date(),
                   updatedBy: approvedBy
                 })
@@ -129,7 +178,8 @@ export class TransactionService {
               await tx
                 .update(inventoryStocks)
                 .set({ 
-                  quantity: (Number(stock.quantity) + qty).toString(), 
+                  physicalQty: (Number(stock.physicalQty) + qty).toString(), 
+                  availableQty: (Number(stock.availableQty) + qty).toString(), 
                   updatedAt: new Date(),
                   updatedBy: approvedBy
                 })

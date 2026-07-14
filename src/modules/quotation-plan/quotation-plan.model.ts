@@ -5,7 +5,7 @@ import { purchaseOrders, purchaseOrderDetails, purchaseOrderRequests } from "../
 import { itemPriceHistories } from "../item/item.schema";
 import { quotationPlanPurchaseRequests } from "./quotation-plan.schema";
 import { approvalSteps } from "../approval-step/approval-step.schema";
-import { eq, and, sql, or, inArray, desc } from "drizzle-orm";
+import { eq, and, sql, or, inArray, desc, ne } from "drizzle-orm";
 import { z } from "zod";
 import { createQuotationPlanSchema, approvalQPSchema } from "./quotation-plan.validation";
 import { NotFoundError } from "elysia";
@@ -66,6 +66,7 @@ export class QuotationPlanModel {
     search?: string;
     purchaseRequestId?: string;
     warehouseIds?: string[];
+    requiredApprovalStage?: number;
   }) {
     const page = params.page || 1;
     const limit = params.limit || 10;
@@ -87,6 +88,18 @@ export class QuotationPlanModel {
     }
     if (params.warehouseIds && params.warehouseIds.length > 0) {
       conditions.push(inArray(quotationPlans.warehouseId, params.warehouseIds));
+    }
+
+    // Dynamic approval stage filter:
+    // Only show pending QPs (status=1) that are at the user's required stage.
+    // Non-pending QPs (completed, rejected, etc.) are always visible.
+    if (params.requiredApprovalStage !== undefined) {
+      conditions.push(
+        sql`(
+          (${quotationPlans.status} = 1 AND ${quotationPlans.currentApprovalStage} = ${params.requiredApprovalStage})
+          OR ${quotationPlans.status} != 1
+        )`
+      );
     }
 
     const rows = await db.query.quotationPlans.findMany({
@@ -112,6 +125,7 @@ export class QuotationPlanModel {
     search?: string;
     purchaseRequestId?: string;
     warehouseIds?: string[];
+    requiredApprovalStage?: number;
   }) {
     const conditions = [sql`${quotationPlans.deletedAt} IS NULL`];
     if (params.search) {
@@ -126,6 +140,14 @@ export class QuotationPlanModel {
     }
     if (params.warehouseIds && params.warehouseIds.length > 0) {
       conditions.push(inArray(quotationPlans.warehouseId, params.warehouseIds));
+    }
+    if (params.requiredApprovalStage !== undefined) {
+      conditions.push(
+        sql`(
+          (${quotationPlans.status} = 1 AND ${quotationPlans.currentApprovalStage} = ${params.requiredApprovalStage})
+          OR ${quotationPlans.status} != 1
+        )`
+      );
     }
 
     const [result] = await db.select({ count: sql<number>`count(*)` }).from(quotationPlans).where(and(...conditions));

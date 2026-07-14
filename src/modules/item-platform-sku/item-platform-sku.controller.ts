@@ -77,6 +77,10 @@ export class ItemPlatformSkuController {
       }
 
       const record = await ItemPlatformSkuModel.create(itemId, parsed.data, ctx.user?.sub);
+      if (!record) {
+        ctx.set.status = 500;
+        return failedResponse(correlationId, "Create data failed!", 500, "Failed to create SKU mapping record");
+      }
 
       await logActivity({
         userId: ctx.user?.sub,

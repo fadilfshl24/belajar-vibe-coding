@@ -37,6 +37,9 @@ export class ApprovalStepController {
         previousPage: page > 1,
         nextPageURL: page < totalPage ? buildUrl(page + 1) : "",
         previousPageURL: page > 1 ? buildUrl(page - 1) : "",
+        filterColumn: "",
+        searchTerm: "",
+        orderBy: "",
       };
 
       return successResponse(correlationId, "Data found!", { records }, pagination);
@@ -80,6 +83,10 @@ export class ApprovalStepController {
       }
 
       const record = await ApprovalStepModel.create(parsed.data, ctx.user?.sub);
+
+      if (!record) {
+        return failedResponse(correlationId, "Create data failed!", 500, "Failed to create approval step");
+      }
 
       await logActivity({
         userId: ctx.user?.sub,

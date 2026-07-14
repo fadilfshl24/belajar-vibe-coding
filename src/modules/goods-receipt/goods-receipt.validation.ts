@@ -20,8 +20,8 @@ export const createGoodsReceiptSchema = z.object({
 export type CreateGoodsReceiptInput = z.infer<typeof createGoodsReceiptSchema>;
 
 export const goodsReceiptListQuerySchema = z.object({
-  page: z.string().regex(/^\d+$/).transform(Number).default("1"),
-  limit: z.string().regex(/^\d+$/).transform(Number).default("10"),
+  page: z.string().regex(/^\d+$/).transform(Number).default(1),
+  limit: z.string().regex(/^\d+$/).transform(Number).default(10),
   search: z.string().optional(),
   filterColumn: z.string().optional(),
   status: z.string().regex(/^\d+$/).transform(Number).optional(),

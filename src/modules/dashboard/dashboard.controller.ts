@@ -34,7 +34,7 @@ export class DashboardController {
       const [lowStock] = await db
         .select({ count: sql<number>`cast(count(${inventoryStocks.id}) as int)` })
         .from(inventoryStocks)
-        .where(sql`${inventoryStocks.quantity} < 10`);
+        .where(sql`${inventoryStocks.availableQty} < 10`);
 
       const kpiData = {
         totalBarangMasuk: inbound?.total ?? 0,

@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, inArray } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, ne, or } from "drizzle-orm";
 import { db } from "../../core/db";
 import { qualityControls, qualityControlDetails, qualityControlApprovals } from "./quality-control.schema";
 import { goodsReceipts, goodsReceiptDetails } from "../goods-receipt/goods-receipt.schema";
@@ -7,7 +7,8 @@ import { transactions, transactionItems } from "../transaction/transaction.schem
 import { approvalSteps } from "../approval-step/approval-step.schema";
 import { users } from "../user/user.schema";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
-import { CreateQualityControlInput } from "./quality-control.validation";
+import type { CreateQualityControlInput } from "./quality-control.validation";
+import { resolveRequiredApprovalStage } from "../../core/utils/approval-stage.resolver";
 
 async function generateQCCode(): Promise<string> {
   const today = new Date();
@@ -45,15 +46,17 @@ export class QualityControlModel {
 
     const conditions = [isNull(qualityControls.deletedAt)];
 
-    // Filtering based on user's warehouse mapping
+    // Role-based visibility: filter by warehouse
+    let requiredApprovalStage: number | undefined = undefined;
+
     if (userId) {
-      // Check if user is superadmin
-      const userRolesResult = await db.select({ roleCode: roles.code })
+      const userRolesResult = await db.select({ roleCode: roles.code, roleId: userWarehouseRoles.roleId })
         .from(userWarehouseRoles)
         .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
         .where(eq(userWarehouseRoles.userId, userId));
 
-      const isSuperAdmin = userRolesResult.some(r => r.roleCode === 'superadmin');
+      const roleCodes = userRolesResult.map(r => r.roleCode);
+      const isSuperAdmin = roleCodes.some(r => ['superadmin', 'admin'].includes(r));
 
       if (!isSuperAdmin) {
         // Find allowed warehouses
@@ -72,7 +75,6 @@ export class QualityControlModel {
         if (allowedWarehouseIds.length === 0) {
           return { data: [], total: 0, page, limit, totalPages: 0 };
         } else {
-          // Find GRs belonging to allowed warehouses
           const allowedGRsResult = await db.select({ id: goodsReceipts.id })
             .from(goodsReceipts)
             .where(inArray(goodsReceipts.warehouseId, allowedWarehouseIds));
@@ -86,8 +88,25 @@ export class QualityControlModel {
           }
         }
       }
+      
+      // Dynamic approval stage filter based on approval_steps config
+      requiredApprovalStage = await resolveRequiredApprovalStage(userId, 'QC');
     }
+
     if (status !== undefined) conditions.push(eq(qualityControls.status, status));
+
+    // Apply approval stage filter: only show pending QCs at user's stage
+    if (requiredApprovalStage !== undefined) {
+      conditions.push(
+        or(
+          and(
+            eq(qualityControls.status, 1),
+            eq(qualityControls.currentApprovalStage, requiredApprovalStage)
+          ),
+          ne(qualityControls.status, 1)
+        )!
+      );
+    }
 
     const whereClause = and(...conditions);
 
@@ -290,7 +309,7 @@ export class QualityControlModel {
           }).returning();
 
           const trxInItems = passDetails.map(d => ({
-            transactionId: trxIn.id,
+            transactionId: trxIn!.id,
             itemId: d.itemId,
             quantity: d.passQuantity.toString(),
             createdBy: userId,
@@ -307,7 +326,8 @@ export class QualityControlModel {
             if (stock) {
               await tx.update(inventoryStocks)
                 .set({
-                  quantity: (parseFloat(stock.quantity) + detail.passQuantity).toString(),
+                  physicalQty: (parseFloat(stock.physicalQty) + detail.passQuantity).toString(),
+                  availableQty: (parseFloat(stock.availableQty) + detail.passQuantity).toString(),
                   updatedAt: new Date(),
                   updatedBy: userId
                 })
@@ -316,7 +336,9 @@ export class QualityControlModel {
               await tx.insert(inventoryStocks).values({
                 warehouseId,
                 itemId: detail.itemId,
-                quantity: detail.passQuantity.toString(),
+                physicalQty: detail.passQuantity.toString(),
+                availableQty: detail.passQuantity.toString(),
+                reservedQty: "0.00",
                 createdBy: userId,
                 updatedBy: userId,
               });
@@ -338,7 +360,7 @@ export class QualityControlModel {
           }).returning();
 
           const trxRejectItems = rejectDetails.map(d => ({
-            transactionId: trxReject.id,
+            transactionId: trxReject!.id,
             itemId: d.itemId,
             quantity: d.rejectQuantity.toString(),
             createdBy: userId,

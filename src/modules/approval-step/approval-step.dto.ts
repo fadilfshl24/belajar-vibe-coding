@@ -1,5 +1,5 @@
 export interface CreateApprovalStepInput {
-  documentType: "PR" | "QP" | "PO";
+  documentType: "PR" | "QP" | "PO" | "QC";
   stage: number;
   roleId: string;
   isActive?: boolean;

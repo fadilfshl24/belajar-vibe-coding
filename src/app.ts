@@ -27,6 +27,8 @@ import { reportRoutes } from "./modules/report/report.routes";
 import { approvalStepRoutes } from "./modules/approval-step";
 import { goodsReceiptRoutes } from "./modules/goods-receipt";
 import { qualityControlRoutes } from "./modules/quality-control";
+import { scrapRoutes } from "./modules/scrap/scrap.routes";
+import { notificationRoutes, notificationWsRoutes } from "./modules/notification/notification.routes";
 import { staticPlugin } from "@elysiajs/static";
 /**
  * App Factory
@@ -80,11 +82,15 @@ export const app = new Elysia()
   .use(quotationPlanRoutes)
   .use(goodsReceiptRoutes)
   .use(qualityControlRoutes)
+  .use(scrapRoutes)
   .use(reportRoutes)
   .use(transactionRoutes)
   .use(userWarehouseMappingRoutes)
   .use(warehouseRegionRoutes)
   .use(uploadRoutes)
+  // Notification Module (REST + WebSocket)
+  .use(notificationRoutes)
+  .use(notificationWsRoutes)
   .get("/health", () => ({
     status: "ok",
     timestamp: new Date().toISOString(),

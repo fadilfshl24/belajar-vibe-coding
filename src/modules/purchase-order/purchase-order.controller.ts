@@ -16,6 +16,7 @@ import { logActivity } from "../../core/utils/activityLogger";
 import { db } from "../../core/db";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { resolveRequiredApprovalStage } from "../../core/utils/approval-stage.resolver";
 export class PurchaseOrderController {
   static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
@@ -31,6 +32,7 @@ export class PurchaseOrderController {
 
       // ── Role-Based Visibility ─────────────────────────────────────────────────
       let visibleWarehouseIds: string[] | undefined = undefined;
+      let requiredApprovalStage: number | undefined = undefined;
 
       const userId = ctx.user?.sub;
       if (userId) {
@@ -59,12 +61,15 @@ export class PurchaseOrderController {
             );
           visibleWarehouseIds = mappings.map((m) => m.warehouseId);
         }
+
+        // Dynamic approval stage filter based on approval_steps config
+        requiredApprovalStage = await resolveRequiredApprovalStage(userId, "PO");
       }
       // ─────────────────────────────────────────────────────────────────────────
 
       const [totalRecord, records] = await Promise.all([
-        PurchaseOrderModel.countAll({ ...params, visibleWarehouseIds }),
-        PurchaseOrderModel.findAll({ ...params, visibleWarehouseIds }),
+        PurchaseOrderModel.countAll({ ...params, visibleWarehouseIds, requiredApprovalStage }),
+        PurchaseOrderModel.findAll({ ...params, visibleWarehouseIds, requiredApprovalStage }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;

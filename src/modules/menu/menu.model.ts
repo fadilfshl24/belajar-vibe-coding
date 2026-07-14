@@ -30,15 +30,29 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(filterColumn?: string, searchTerm?: string) {
-  if (!filterColumn || !searchTerm) return isNull(menus.deletedAt);
-  const term = searchTerm.trim();
-  if (term === "") return isNull(menus.deletedAt);
-  switch (filterColumn) {
-    case "name": return and(ilike(menus.name, `%${term}%`), isNull(menus.deletedAt));
-    case "code": return and(ilike(menus.code, `%${term}%`), isNull(menus.deletedAt));
-    default: return isNull(menus.deletedAt);
+function buildFilterCondition(filterColumn?: string, searchTerm?: string, parentId?: string) {
+  const conditions = [isNull(menus.deletedAt)];
+  
+  if (parentId !== undefined && parentId !== "") {
+    if (parentId === "none") {
+      conditions.push(isNull(menus.parentId));
+    } else {
+      conditions.push(eq(menus.parentId, parentId));
+    }
   }
+
+  if (filterColumn && searchTerm && searchTerm.trim() !== "") {
+    const term = searchTerm.trim();
+    switch (filterColumn) {
+      case "name": conditions.push(ilike(menus.name, `%${term}%`)); break;
+      case "code": conditions.push(ilike(menus.code, `%${term}%`)); break;
+    }
+  } else if (searchTerm && searchTerm.trim() !== "") {
+    const term = searchTerm.trim();
+    conditions.push(ilike(menus.name, `%${term}%`));
+  }
+  
+  return and(...conditions);
 }
 
 export class MenuModel {
@@ -48,10 +62,11 @@ export class MenuModel {
     orderBy: string;
     searchTerm?: string;
     filterColumn?: string;
+    parentId?: string;
   }): Promise<MenuDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, parentId } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition(filterColumn, searchTerm);
+    const whereClause = buildFilterCondition(filterColumn, searchTerm, parentId);
     const offset = (page - 1) * limit;
 
     const result = await db
@@ -65,8 +80,8 @@ export class MenuModel {
     return result.map(toMenuDTO);
   }
 
-  static async countAll(searchTerm?: string, filterColumn?: string): Promise<number> {
-    const whereClause = buildFilterCondition(filterColumn, searchTerm);
+  static async countAll(searchTerm?: string, filterColumn?: string, parentId?: string): Promise<number> {
+    const whereClause = buildFilterCondition(filterColumn, searchTerm, parentId);
     const result = await db.select({ total: count() }).from(menus).where(whereClause);
     return result[0]?.total ?? 0;
   }

@@ -183,6 +183,27 @@
       "when": 1783802293687,
       "tag": "0026_cynical_omega_red",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783932718165,
+      "tag": "0027_low_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784018104316,
+      "tag": "0028_bumpy_thanos",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784018146408,
+      "tag": "0029_odd_terrax",
+      "breakpoints": true
     }
   ]
 }
