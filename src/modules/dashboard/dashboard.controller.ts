@@ -4,7 +4,7 @@ import { db } from "../../core/db";
 import { transactions, transactionItems } from "../transaction/transaction.schema";
 import { inventoryStocks } from "../inventory/inventory.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
-import { eq, and, sql, desc, sum } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 export class DashboardController {
   static async getKpi(ctx: Context) {
@@ -41,7 +41,7 @@ export class DashboardController {
         db
           .select({ count: sql<number>`cast(count(${inventoryStocks.id}) as int)` })
           .from(inventoryStocks)
-          .where(sql`${inventoryStocks.quantity} < 10`)
+          .where(sql`${inventoryStocks.availableQty} < 10`),
       ]);
 
       const kpiData = {

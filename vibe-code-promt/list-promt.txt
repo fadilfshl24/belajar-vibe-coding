@@ -170,3 +170,24 @@ Buatkan perencanaan untuk generate quotation plan dari item purchase request yan
 5. Buatkan juga history price dari harga barang itemnya dari per quotation yang di buat dan dari masing - masing vendor. karna saya ingin membuat report untuk HPP dari item tersebut. dan harga barang bisa berubah - ubah dari vendornya kadang hari ini 5000 kadang lusa bisa jadi 6000 dan saya ingin itu ter record jelas di report. sepertinya ini perlu membuat table baru untuk price item nya
 
 Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-notification-transaction.md
+
+Buatkan issues-notification-transaction.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Buatkan perencanaan untuk membuat tampilan notification transaction yang masuk untuk masing - masing role terutama untuk module Purchase Request, Quotation Plan, Purchase Order, Goods Receipt dan Quality Control, agar user mendapatkan notif langsung di aplikasi dan ketika di klik akan mengarahkan ke halaman masing - masing module tersebut sesuai dengan role user nya. Buatkan juga planning detail dan tabel yang di perlukan untuk menyimpan data tersebut, jangan lupa buatkan API endpointnya juga.
+
+Untuk semua data yang masuk ke dalam module masing - masing pastikan sesuai dengan mappingan data usernya. agar tidak tercampur dengan data user lain yang tidak memiliki hak akses untuk melihat data tersebut.
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.

@@ -167,9 +167,10 @@ export class ApprovalStepModel {
       if (!usersByRoleId[record.roleId]) {
         usersByRoleId[record.roleId] = [];
       }
+      const roleUsers = usersByRoleId[record.roleId]!;
       // hindari duplikasi
-      if (!usersByRoleId[record.roleId].find(u => u.userId === record.userId)) {
-        usersByRoleId[record.roleId].push({
+      if (!roleUsers.find(u => u.userId === record.userId)) {
+        roleUsers.push({
           userId: record.userId,
           userName: record.userName,
           userEmail: record.userEmail,

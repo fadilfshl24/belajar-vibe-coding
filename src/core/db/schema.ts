@@ -21,3 +21,5 @@ export * from "../../modules/approval-step/approval-step.schema";
 export * from "../../modules/goods-receipt/goods-receipt.schema";
 export * from "../../modules/quality-control/quality-control.schema";
 export * from "../../modules/item-platform-sku/item-platform-sku.schema";
+export * from "../../modules/notification/notification.schema";
+export * from "../../modules/scrap/scrap.schema";

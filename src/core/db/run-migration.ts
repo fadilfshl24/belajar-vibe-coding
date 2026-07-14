@@ -4,11 +4,11 @@ import * as fs from "fs";
 
 async function main() {
   try {
-    const query = fs.readFileSync("drizzle/0024_bizarre_wallop.sql", "utf8");
+    const query = fs.readFileSync("drizzle/0029_odd_terrax.sql", "utf8");
     await db.execute(sql.raw(query));
-    console.log("Migration 0024 executed successfully");
+    console.log("Migration 0029 executed successfully");
   } catch (err) {
-    console.error(err);
+    console.error("Migration 0029 failed!", err);
   }
   process.exit(0);
 }

@@ -12,6 +12,7 @@ import { toQuotationPlanDTO } from "./quotation-plan.dto";
 import { db } from "../../core/db";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
 import { eq, and, isNull } from "drizzle-orm";
+import { resolveRequiredApprovalStage } from "../../core/utils/approval-stage.resolver";
 
 export class QuotationPlanController {
   static async getAll(ctx: Context & { user?: JwtPayload }) {
@@ -27,6 +28,7 @@ export class QuotationPlanController {
       const params = parsed.data;
       const userId = ctx.user?.sub;
       let visibleWarehouseIds: string[] | undefined = undefined;
+      let requiredApprovalStage: number | undefined = undefined;
 
       if (userId) {
         const userRoleRows = await db
@@ -81,15 +83,20 @@ export class QuotationPlanController {
               orderBy: "",
             });
         }
+
+        // Dynamic approval stage filter based on approval_steps config
+        requiredApprovalStage = await resolveRequiredApprovalStage(userId, "QP");
       }
 
       const rows = await QuotationPlanModel.findAll({
         ...params,
         warehouseIds: visibleWarehouseIds,
+        requiredApprovalStage,
       });
       const totalCount = await QuotationPlanModel.countAll({
         ...params,
         warehouseIds: visibleWarehouseIds,
+        requiredApprovalStage,
       });
 
       return successResponse(correlationId, "Success", rows.map(toQuotationPlanDTO), {

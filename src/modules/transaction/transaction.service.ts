@@ -63,7 +63,6 @@ export class TransactionService {
       const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
       const insertPayloads = [];
-      const updatePromises = [];
 
       for (const item of txData.items) {
         const stock = stockMap.get(item.itemId);
@@ -71,45 +70,44 @@ export class TransactionService {
 
         if (txData.type === "IN") {
           if (stock) {
-            updatePromises.push(
-              tx.update(inventoryStocks)
-                .set({
-                  quantity: (Number(stock.quantity) + qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: userId
-                })
-                .where(eq(inventoryStocks.id, stock.id))
-            );
+            await tx
+              .update(inventoryStocks)
+              .set({
+                physicalQty: (Number(stock.physicalQty) + qty).toString(),
+                availableQty: (Number(stock.availableQty) + qty).toString(),
+                updatedAt: new Date(),
+                updatedBy: userId
+              })
+              .where(eq(inventoryStocks.id, stock.id));
           } else {
             insertPayloads.push({
               warehouseId: txData.warehouseId,
               itemId: item.itemId,
-              quantity: qty.toString(),
+              physicalQty: qty.toString(),
+              availableQty: qty.toString(),
+              reservedQty: "0.00",
               createdBy: userId,
               updatedBy: userId,
             });
           }
         } else if (txData.type === "OUT") {
-          if (!stock || Number(stock.quantity) < qty) {
+          if (!stock || Number(stock.physicalQty) < qty) {
             throw new Error(`Insufficient stock for item ${item.itemId}`);
           }
-          updatePromises.push(
-            tx.update(inventoryStocks)
-              .set({
-                quantity: (Number(stock.quantity) - qty).toString(),
-                updatedAt: new Date(),
-                updatedBy: userId
-              })
-              .where(eq(inventoryStocks.id, stock.id))
-          );
+          await tx
+            .update(inventoryStocks)
+            .set({
+              physicalQty: (Number(stock.physicalQty) - qty).toString(),
+              availableQty: (Number(stock.availableQty) - qty).toString(),
+              updatedAt: new Date(),
+              updatedBy: userId
+            })
+            .where(eq(inventoryStocks.id, stock.id));
         }
       }
 
       if (insertPayloads.length > 0) {
         await tx.insert(inventoryStocks).values(insertPayloads);
-      }
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
       }
 
       // Update status
@@ -140,8 +138,6 @@ export class TransactionService {
           : [];
         const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
-        const updatePromises = [];
-
         for (const item of txData.items) {
           const stock = stockMap.get(item.itemId);
 
@@ -149,32 +145,28 @@ export class TransactionService {
             const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
-              updatePromises.push(
-                tx.update(inventoryStocks)
-                  .set({
-                    quantity: (Number(stock.quantity) - qty).toString(),
-                    updatedAt: new Date(),
-                    updatedBy: approvedBy
-                  })
-                  .where(eq(inventoryStocks.id, stock.id))
-              );
+              await tx
+                .update(inventoryStocks)
+                .set({
+                  physicalQty: (Number(stock.physicalQty) - qty).toString(),
+                  availableQty: (Number(stock.availableQty) - qty).toString(),
+                  updatedAt: new Date(),
+                  updatedBy: approvedBy
+                })
+                .where(eq(inventoryStocks.id, stock.id));
             } else {
               // Revert OUT -> add
-              updatePromises.push(
-                tx.update(inventoryStocks)
-                  .set({
-                    quantity: (Number(stock.quantity) + qty).toString(),
-                    updatedAt: new Date(),
-                    updatedBy: approvedBy
-                  })
-                  .where(eq(inventoryStocks.id, stock.id))
-              );
+              await tx
+                .update(inventoryStocks)
+                .set({
+                  physicalQty: (Number(stock.physicalQty) + qty).toString(),
+                  availableQty: (Number(stock.availableQty) + qty).toString(),
+                  updatedAt: new Date(),
+                  updatedBy: approvedBy
+                })
+                .where(eq(inventoryStocks.id, stock.id));
             }
           }
-        }
-
-        if (updatePromises.length > 0) {
-          await Promise.all(updatePromises);
         }
       });
     }

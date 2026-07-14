@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_stocks" DROP COLUMN "quantity";

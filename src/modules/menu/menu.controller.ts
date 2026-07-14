@@ -21,26 +21,27 @@ export class MenuController {
       const filterColumn = query.filterColumn ?? "";
       const searchTerm = query.searchTerm ?? "";
       const orderBy = query.orderBy ?? DEFAULT_ORDER_BY;
+      const parentId = query.parentId;
 
       const [totalRecord, records] = await Promise.all([
-        MenuModel.countAll(searchTerm || undefined, filterColumn || undefined),
-        MenuModel.findAll({ page, limit: internalLimit, orderBy, searchTerm: searchTerm || undefined, filterColumn: filterColumn || undefined }),
+        MenuModel.countAll(searchTerm || undefined, filterColumn || undefined, parentId),
+        MenuModel.findAll({ page, limit: internalLimit, orderBy, searchTerm: searchTerm || undefined, filterColumn: filterColumn || undefined, parentId }),
       ]);
 
       const totalPage = rawLimit === 1000 ? 1 : Math.ceil(totalRecord / rawLimit);
       const baseUrl = (process.env.APP_URL ?? "http://localhost:3000") + "/api/menus";
       const buildUrl = (p: number) => {
-        const params = new URLSearchParams({ page: String(p), limit: String(rawLimit), ...(filterColumn ? { filterColumn } : {}), ...(searchTerm ? { searchTerm } : {}), ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}) });
+        const params = new URLSearchParams({ page: String(p), limit: String(rawLimit), ...(filterColumn ? { filterColumn } : {}), ...(searchTerm ? { searchTerm } : {}), ...(orderBy !== DEFAULT_ORDER_BY ? { orderBy } : {}), ...(parentId ? { parentId } : {}) });
         return `${baseUrl}?${params.toString()}`;
       };
 
-      const pagination: PaginationMeta = {
+      const pagination: PaginationMeta & { parentId?: string } = {
         page, limit: rawLimit, totalRecord, totalPage,
         nextPage: page < totalPage,
         previousPage: page > 1,
         nextPageURL: page < totalPage ? buildUrl(page + 1) : "",
         previousPageURL: page > 1 ? buildUrl(page - 1) : "",
-        filterColumn, searchTerm, orderBy,
+        filterColumn, searchTerm, orderBy, parentId
       };
 
       return successResponse(correlationId, "Data found!", { records }, pagination);

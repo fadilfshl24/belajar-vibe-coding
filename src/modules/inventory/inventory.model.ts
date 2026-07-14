@@ -1,6 +1,6 @@
 import { db } from "../../core/db";
 import { inventoryStocks } from "./inventory.schema";
-import { eq, and, sql, asc, desc, ilike, or, isNull } from "drizzle-orm";
+import { eq, and, sql, asc, desc, ilike, or, isNull, inArray } from "drizzle-orm";
 import { items } from "../item/item.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
 
@@ -8,6 +8,7 @@ interface FindAllOptions {
   page: number;
   limit: number;
   warehouseId?: string;
+  warehouseIds?: string[];
   itemId?: string;
   searchTerm?: string;
 }
@@ -19,6 +20,8 @@ export class InventoryModel {
 
     if (opts.warehouseId) {
       conditions.push(eq(inventoryStocks.warehouseId, opts.warehouseId));
+    } else if (opts.warehouseIds && opts.warehouseIds.length > 0) {
+      conditions.push(inArray(inventoryStocks.warehouseId, opts.warehouseIds));
     }
     if (opts.itemId) {
       conditions.push(eq(inventoryStocks.itemId, opts.itemId));
@@ -38,13 +41,16 @@ export class InventoryModel {
     const query = db
       .select({
         id: inventoryStocks.id,
-        quantity: inventoryStocks.quantity,
+        physicalQty: inventoryStocks.physicalQty,
+        reservedQty: inventoryStocks.reservedQty,
+        availableQty: inventoryStocks.availableQty,
         warehouseId: inventoryStocks.warehouseId,
         warehouseCode: warehouses.code,
         warehouseName: warehouses.name,
         itemId: inventoryStocks.itemId,
         itemCode: items.code,
         itemName: items.name,
+        isAsset: items.isAsset,
         updatedAt: inventoryStocks.updatedAt,
       })
       .from(inventoryStocks)
@@ -63,6 +69,8 @@ export class InventoryModel {
 
     if (opts.warehouseId) {
       conditions.push(eq(inventoryStocks.warehouseId, opts.warehouseId));
+    } else if (opts.warehouseIds && opts.warehouseIds.length > 0) {
+      conditions.push(inArray(inventoryStocks.warehouseId, opts.warehouseIds));
     }
     if (opts.itemId) {
       conditions.push(eq(inventoryStocks.itemId, opts.itemId));

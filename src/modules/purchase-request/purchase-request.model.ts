@@ -44,8 +44,9 @@ function buildFilterCondition(params: {
   requestedByUserId?: string;
   visibleWarehouseIds?: string[];
   currentUserId?: string;
+  requiredApprovalStage?: number; // when set, filter pending PRs to only this stage
 }) {
-  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
+  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
   let conds = isNull(purchaseRequests.deletedAt);
   if (status !== undefined) {
     conds = and(conds, eq(purchaseRequests.status, status))!;
@@ -64,7 +65,22 @@ function buildFilterCondition(params: {
   if (visibleWarehouseIds && visibleWarehouseIds.length > 0) {
     conds = and(conds, inArray(purchaseRequests.warehouseId, visibleWarehouseIds))!;
   }
-  
+
+  // ── Approval Stage Filter ──────────────────────────────────────────────────
+  // When requiredApprovalStage is set, only show PRs that are either:
+  //  a) status=Pending(1) AND currentApprovalStage == requiredApprovalStage, OR
+  //  b) status != Pending (already resolved: approved/rejected/completed/etc.)
+  // This prevents e.g. branch_head from seeing PRs still waiting for WH Head.
+  if (requiredApprovalStage !== undefined) {
+    const isPendingAtCorrectStage = and(
+      eq(purchaseRequests.status, 1),
+      eq(purchaseRequests.currentApprovalStage, requiredApprovalStage)
+    );
+    const isNotPending = ne(purchaseRequests.status, 1);
+    conds = and(conds, or(isPendingAtCorrectStage, isNotPending))!;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   // Custom logic: Cancelled PRs (status = 4) are only visible to the user who created them
   if (currentUserId) {
     // Show PR if: status is NOT 4, OR (status IS 4 AND requestedBy IS currentUserId)
@@ -119,10 +135,11 @@ export class PurchaseRequestModel {
     requestedByUserId?: string;
     visibleWarehouseIds?: string[];
     currentUserId?: string;
+    requiredApprovalStage?: number;
   }): Promise<PurchaseRequestDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseRequests.findMany({
@@ -156,7 +173,7 @@ export class PurchaseRequestModel {
     return result.map(toPurchaseRequestDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string; requiredApprovalStage?: number }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause as any);
     return result[0]?.total ?? 0;
@@ -346,7 +363,7 @@ export class PurchaseRequestModel {
     // 4. Upsert inventory_stocks for each item
     for (const detail of prDetails) {
       const existing = await tx
-        .select({ id: inventoryStocks.id, quantity: inventoryStocks.quantity })
+        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
         .from(inventoryStocks)
         .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
 
@@ -355,17 +372,20 @@ export class PurchaseRequestModel {
         await tx.insert(inventoryStocks).values({
           warehouseId,
           itemId: detail.itemId,
-          quantity: detail.quantity.toString(),
+          physicalQty: detail.quantity.toString(),
+          availableQty: detail.quantity.toString(),
+          reservedQty: "0.00",
           createdBy: userId,
           updatedBy: userId,
         });
       } else {
         // Update existing stock quantity
         const existingStock = existing[0]!;
-        const newQty = Number(existingStock.quantity) + Number(detail.quantity);
+        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
+        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
         await tx
           .update(inventoryStocks)
-          .set({ quantity: newQty.toString(), updatedAt: new Date(), updatedBy: userId })
+          .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
           .where(eq(inventoryStocks.id, existingStock.id));
       }
     }
