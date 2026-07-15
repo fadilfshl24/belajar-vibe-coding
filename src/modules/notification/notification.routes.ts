@@ -38,9 +38,9 @@ export const notificationWsRoutes = new Elysia()
   .ws("/ws/notifications", {
     async open(ws) {
       try {
-        // Extract token from query params
-        const url = new URL(ws.data.request.url);
-        const token = url.searchParams.get("token");
+        // Extract token from request URL safely
+        const urlObj = new URL(ws.data.request.url, "http://localhost");
+        const token = urlObj.searchParams.get("token") || (ws.data as any)?.query?.token;
 
         if (!token) {
           ws.send(JSON.stringify({ event: "error", data: { message: "Unauthorized: no token" } }));
