@@ -17,10 +17,10 @@ export const purchaseOrders = pgTable(
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id),
     orderDate: date("order_date").notNull(),
     expectedDeliveryDate: date("expected_delivery_date"),
-    status: integer("status").notNull().default(0), // 0=Draft, 1 = Pending Approval, 2=Approved, 3=Rejected, 4=Sent, 5=Partial Received, 6=Fully Received, 7=Cancelled
-    currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER, 3=DONE
+    status: integer("status").notNull().default(0), // 0 = Draft, 1 = Pending Approval, 2 = Approved, 3 = Rejected, 4 = Sent, 5 = Partial Received, 6 = Fully Received, 7 = Cancelled
+    currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0 = WH_HEAD, 1 = BRANCH_HEAD, 2 = MANAGER, 3 = DONE
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     totalPrice: decimal("total_price", { precision: 18, scale: 2 }).notNull().default("0"),
     tax: decimal("tax", { precision: 18, scale: 2 }).notNull().default("0"),
     discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }).notNull().default("0"),
@@ -90,7 +90,7 @@ export const purchaseOrderApprovals = pgTable(
     stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER
     status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     remark: text("remark"),
     ...auditColumns,
   },

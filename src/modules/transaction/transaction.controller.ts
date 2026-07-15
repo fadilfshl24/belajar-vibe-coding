@@ -5,9 +5,12 @@ import { TransactionService } from "./transaction.service";
 import { parseCreateTransaction, parseCancelRequest, parseCancelApprove, parseListQuery } from "./transaction.validation";
 import type { JwtPayload } from "../../core/types/JwtPayload";
 import { logActivity } from "../../core/utils/activityLogger";
+import { db } from "../../core/db";
+import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
+import { eq, and, isNull } from "drizzle-orm";
 
 export class TransactionController {
-  static async getAll(ctx: Context) {
+  static async getAll(ctx: Context & { user?: JwtPayload }) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
       const parsed = parseListQuery(ctx.query);
@@ -17,10 +20,53 @@ export class TransactionController {
       }
 
       const { page, limit, searchTerm, warehouseId, type, status } = parsed.data;
+      const userId = ctx.user?.sub;
+      let userWarehouseIds: string[] | undefined = undefined;
+
+      if (userId) {
+        const userRoleRows = await db
+          .select({ roleCode: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(and(isNull(userWarehouseRoles.deletedAt), eq(userWarehouseRoles.userId, userId)));
+
+        const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
+        const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
+        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head"].includes(r));
+
+        if (!isGlobalViewer && isRestrictedByWarehouse) {
+          const mappings = await db
+            .select({ warehouseId: userWarehouseMappings.warehouseId })
+            .from(userWarehouseMappings)
+            .where(
+              and(
+                eq(userWarehouseMappings.userId, userId),
+                eq(userWarehouseMappings.isActive, true),
+                isNull(userWarehouseMappings.deletedAt)
+              )
+            );
+          userWarehouseIds = mappings.map((m) => m.warehouseId);
+          if (userWarehouseIds.length === 0) {
+            return successResponse(correlationId, "Success", [], {
+              page,
+              limit,
+              totalRecord: 0,
+              totalPage: 0,
+              nextPage: false,
+              previousPage: false,
+              nextPageURL: "",
+              previousPageURL: "",
+              filterColumn: "",
+              searchTerm: searchTerm ?? "",
+              orderBy: "",
+            });
+          }
+        }
+      }
 
       const [totalRecord, records] = await Promise.all([
-        TransactionModel.countAll({ searchTerm, warehouseId, type, status }),
-        TransactionModel.findAll({ page, limit, searchTerm, warehouseId, type, status }),
+        TransactionModel.countAll({ searchTerm, warehouseId, type, status, userWarehouseIds }),
+        TransactionModel.findAll({ page, limit, searchTerm, warehouseId, type, status, userWarehouseIds }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / limit);

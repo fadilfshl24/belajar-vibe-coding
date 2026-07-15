@@ -62,8 +62,6 @@ export const notificationWsRoutes = new Elysia()
 
         notificationWs.addConnection(userId, ws);
         ws.send(JSON.stringify({ event: "connected", data: { userId, message: "Connected to notification service" } }));
-
-        console.log(`[WS:notifications] User ${userId} connected`);
       } catch (err) {
         ws.send(JSON.stringify({ event: "error", data: { message: "Connection failed" } }));
         ws.close();
@@ -85,7 +83,6 @@ export const notificationWsRoutes = new Elysia()
       const userId = (ws.data as any).userId as string | undefined;
       if (userId) {
         notificationWs.removeConnection(userId, ws);
-        console.log(`[WS:notifications] User ${userId} disconnected`);
       }
     },
   });

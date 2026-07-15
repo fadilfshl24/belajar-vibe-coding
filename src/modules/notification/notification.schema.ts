@@ -19,8 +19,8 @@ export const notifications = pgTable(
     message: text("message").notNull(),
     targetRole: varchar("target_role", { length: 50 }),
     targetWarehouseId: uuid("target_warehouse_id").references(() => warehouses.id),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     index("idx_notifications_source_type").on(t.sourceType),
@@ -41,9 +41,9 @@ export const userNotifications = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id),
     notificationId: uuid("notification_id").notNull().references(() => notifications.id),
     isRead: boolean("is_read").notNull().default(false),
-    readAt: timestamp("read_at"),
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    deletedAt: timestamp("deleted_at"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     index("idx_user_notifications_user_id").on(t.userId),

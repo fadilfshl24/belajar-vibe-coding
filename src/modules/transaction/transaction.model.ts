@@ -1,9 +1,10 @@
 import { db } from "../../core/db";
 import { transactions, transactionItems, transactionApprovals, type TransactionInsert, type TransactionItemInsert, type TransactionApprovalInsert } from "./transaction.schema";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, sql, desc, or, ilike, isNull } from "drizzle-orm";
+import { eq, and, sql, desc, or, ilike, isNull, inArray } from "drizzle-orm";
 import { warehouses } from "../warehouse/warehouse.schema";
 import { users } from "../user/user.schema";
+import { items } from "../item/item.schema";
 
 interface FindAllOptions {
   page: number;
@@ -12,6 +13,7 @@ interface FindAllOptions {
   type?: "IN" | "OUT";
   status?: "DRAFT" | "COMPLETED" | "CANCEL_PENDING" | "CANCELLED";
   searchTerm?: string;
+  userWarehouseIds?: string[];
 }
 
 export class TransactionModel {
@@ -21,6 +23,8 @@ export class TransactionModel {
 
     if (opts.warehouseId) {
       conditions.push(eq(transactions.warehouseId, opts.warehouseId));
+    } else if (opts.userWarehouseIds && opts.userWarehouseIds.length > 0) {
+      conditions.push(inArray(transactions.warehouseId, opts.userWarehouseIds));
     }
     if (opts.type) {
       conditions.push(eq(transactions.type, opts.type));
@@ -60,7 +64,29 @@ export class TransactionModel {
       .limit(opts.limit)
       .offset(offset);
 
-    return await query;
+    const records = await query;
+    if (records.length === 0) return [];
+
+    const txIds = records.map(r => r.id);
+    const itemsData = await db
+      .select({
+        transactionId: transactionItems.transactionId,
+        itemId: transactionItems.itemId,
+        quantity: transactionItems.quantity,
+        itemName: items.name,
+        itemCode: items.code,
+      })
+      .from(transactionItems)
+      .innerJoin(items, eq(transactionItems.itemId, items.id))
+      .where(and(
+        inArray(transactionItems.transactionId, txIds),
+        isNull(transactionItems.deletedAt)
+      ));
+
+    return records.map(r => ({
+      ...r,
+      items: itemsData.filter(i => i.transactionId === r.id)
+    }));
   }
 
   static async countAll(opts: Omit<FindAllOptions, "page" | "limit">) {
@@ -68,6 +94,8 @@ export class TransactionModel {
 
     if (opts.warehouseId) {
       conditions.push(eq(transactions.warehouseId, opts.warehouseId));
+    } else if (opts.userWarehouseIds && opts.userWarehouseIds.length > 0) {
+      conditions.push(inArray(transactions.warehouseId, opts.userWarehouseIds));
     }
     if (opts.type) {
       conditions.push(eq(transactions.type, opts.type));
