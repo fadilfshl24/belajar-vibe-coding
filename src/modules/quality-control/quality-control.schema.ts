@@ -63,7 +63,7 @@ export const qualityControlApprovals = pgTable(
     stage: integer("stage").notNull(),
     status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     remark: text("remark"),
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,

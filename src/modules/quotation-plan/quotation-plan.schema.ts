@@ -22,7 +22,7 @@ export const quotationPlans = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
     code: varchar("code", { length: 50 }).notNull().unique(),
-    status: integer("status").notNull().default(0), // 0=Draft, 1=Pending WH Head, 2=Pending Branch Head, 3=Approved, 4=Rejected
+    status: integer("status").notNull().default(0), // 0 = Draft, 1 = Pending WH Head, 2 = Pending Branch Head, 3 = Approved, 4 = Rejected
     currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD
     description: text("description"),
     isActive: boolean("is_active").notNull().default(true),

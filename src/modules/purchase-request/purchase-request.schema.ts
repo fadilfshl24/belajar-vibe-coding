@@ -18,7 +18,7 @@ export const purchaseRequests = pgTable(
     status: integer("status").notNull().default(0), // 0=Draft, 1=Pending, 2=Approved, 3=Rejected, 4=Closed, 5=Completed
     requestedBy: uuid("requested_by").notNull().references(() => users.id),
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER, 3=APPROVED
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,
@@ -61,7 +61,7 @@ export const purchaseRequestApprovals = pgTable(
     stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER
     status: integer("status").notNull().default(0), // 0=Pending/Waiting, 1=Approved, 2=Rejected
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     remark: text("remark"),
     isActive: boolean("is_active").notNull().default(true),
     ...auditColumns,

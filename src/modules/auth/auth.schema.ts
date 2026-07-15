@@ -17,7 +17,7 @@ export const userSessions = pgTable(
       .references(() => users.id),
     userAgent: text("user_agent"),
     ipAddress: varchar("ip_address", { length: 255 }),
-    expiresAt: timestamp("expires_at").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     isRevoked: boolean("is_revoked").notNull().default(false),
     ...auditColumns,
   },

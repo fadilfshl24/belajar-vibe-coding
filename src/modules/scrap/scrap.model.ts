@@ -2,7 +2,6 @@ import { eq, and, desc, isNull, inArray, sql, or, gt, asc, ne } from "drizzle-or
 import { db } from "../../core/db";
 import { scraps, scrapDetails } from "./scrap.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
-import { items } from "../item/item.schema";
 import { users } from "../user/user.schema";
 import { inventoryStocks } from "../inventory/inventory.schema";
 import { transactions, transactionItems } from "../transaction/transaction.schema";
