@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const baseApprovalStepSchema = z.object({
-  documentType: z.enum(["PR", "QP", "PO", "QC"]),
+  documentType: z.enum(["PR", "QP", "PO", "QC", "SCRAP"]),
   stage: z.number({ message: "Stage is required" }).min(0),
   roleId: z.string({ message: "Role ID is required" }).uuid("Invalid Role ID format"),
   isActive: z.boolean().optional(),

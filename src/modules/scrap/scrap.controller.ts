@@ -85,8 +85,8 @@ export class ScrapController {
             });
         }
 
-        // Dynamic approval stage filter based on approval_steps config (mapped to QC approval steps)
-        requiredApprovalStage = await resolveRequiredApprovalStage(userId, "QC");
+        // Dynamic approval stage filter based on approval_steps config
+        requiredApprovalStage = await resolveRequiredApprovalStage(userId, "SCRAP");
       }
 
       const rows = await ScrapModel.findAll({

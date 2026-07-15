@@ -234,14 +234,14 @@ export class ScrapModel {
       throw new Error("Scrap record not found or not in pending status");
     }
 
-    const requiredStage = await resolveRequiredApprovalStage(userId, "QC"); // Using resolveRequiredApprovalStage (Scrap / QC)
+    const requiredStage = await resolveRequiredApprovalStage(userId, "SCRAP"); // Using resolveRequiredApprovalStage
     // Wait, let's look up using 'QC' or 'PR'. Let's check if 'QC' resolver matches.
     // Better yet, we can query approval steps for type 'QC' (since it is Warehouse Head -> Branch Head).
     // Or we can dynamically use "QC" stages. Let's resolve with documentType "QC" or write "QC" as a surrogate for "SC".
     // Wait, let's verify if "QC" has the same stages. Warehouse Head is stage 0, Branch Head is stage 1.
     // Yes! Let's check 'QC' stage mapping.
 
-    const userStage = await resolveRequiredApprovalStage(userId, "QC");
+    const userStage = await resolveRequiredApprovalStage(userId, "SCRAP");
     if (userStage === undefined || userStage !== scrap.currentApprovalStage) {
       throw new Error("You do not have permission to approve this scrap at the current stage");
     }
@@ -249,7 +249,7 @@ export class ScrapModel {
     // Find next pending approval stage
     const nextPending = await db.query.approvalSteps.findFirst({
       where: and(
-        eq(approvalSteps.documentType, "QC"), // We map Scrap to QC steps (WH Head -> Branch Head)
+        eq(approvalSteps.documentType, "SCRAP"), // Scrap approval steps
         eq(approvalSteps.isActive, true),
         gt(approvalSteps.stage, scrap.currentApprovalStage)
       ),
@@ -372,7 +372,7 @@ export class ScrapModel {
       throw new Error("Scrap record not found or not in pending status");
     }
 
-    const userStage = await resolveRequiredApprovalStage(userId, "QC");
+    const userStage = await resolveRequiredApprovalStage(userId, "SCRAP");
     if (userStage === undefined || userStage !== scrap.currentApprovalStage) {
       throw new Error("You do not have permission to reject this scrap at the current stage");
     }
