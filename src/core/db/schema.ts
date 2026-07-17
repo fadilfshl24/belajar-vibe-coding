@@ -23,3 +23,5 @@ export * from "../../modules/quality-control/quality-control.schema";
 export * from "../../modules/item-platform-sku/item-platform-sku.schema";
 export * from "../../modules/notification/notification.schema";
 export * from "../../modules/scrap/scrap.schema";
+export * from "../../modules/stock-order/stock-order.schema";
+export * from "../../modules/assembly-order/assembly-order.schema";

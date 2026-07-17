@@ -944,3 +944,63 @@ Modul ini mendukung dua tipe barang:
 * **Method**: `DELETE`
 * **Path**: `/api/items/:id`
 * **Auth Required**: Yes
+
+---
+
+## 27. Assembly Order API
+
+Modul ini digunakan untuk mengelola perakitan barang (Assembly Order) dari bahan mentah menjadi produk jadi bertipe `package`.
+
+#### 1. Get Assembly Order List
+
+* **Method**: `GET`
+* **Path**: `/api/assembly-orders`
+* **Auth Required**: Yes
+* **Query Parameters**:
+  * `page` (number, default: 1)
+  * `limit` (number, default: 10)
+  * `status` (number, optional) - 0=Draft, 1=Pending, 2=Approved, 3=Rejected
+  * `warehouseId` (string, optional)
+  * `searchTerm` (string, optional)
+
+#### 2. Get Assembly Order Detail
+
+* **Method**: `GET`
+* **Path**: `/api/assembly-orders/:id`
+* **Auth Required**: Yes
+* **Response Data**: Detail assembly order, item produk jadi, dan rincian komponen bahan baku yang digunakan.
+
+#### 3. Create Assembly Order
+
+* **Method**: `POST`
+* **Path**: `/api/assembly-orders`
+* **Auth Required**: Yes
+* **Request Payload**:
+  ```json
+  {
+    "warehouseId": "warehouse-uuid-here",
+    "notes": "Catatan perakitan produk",
+    "details": [
+      {
+        "itemId": "finished-good-package-item-uuid",
+        "quantityProduced": 10
+      }
+    ]
+  }
+  ```
+  *(Backend akan memvalidasi kecukupan stok bahan mentah secara real-time dan melakukan booking stok `reserved_qty` di database).*
+
+#### 4. Approve Assembly Order
+
+* **Method**: `POST`
+* **Path**: `/api/assembly-orders/:id/approve`
+* **Auth Required**: Yes
+  *(Memicu pengurangan stok fisik komponen bahan baku, merestock produk jadi di gudang tujuan, menghitung HPP otomatis, dan merilis reserved stock).*
+
+#### 5. Reject Assembly Order
+
+* **Method**: `POST`
+* **Path**: `/api/assembly-orders/:id/reject`
+* **Auth Required**: Yes
+  *(Membatalkan booking stok bahan baku dan mengembalikan `available_qty` seperti semula).*
+
