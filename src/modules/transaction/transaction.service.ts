@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
 
 export class TransactionService {
@@ -11,13 +11,27 @@ export class TransactionService {
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
     await db.transaction(async (tx) => {
-      // Process items
-      for (const item of txData.items) {
-        const [stock] = await tx
+      // ⚡ Bolt: Prevent N+1 query by batch fetching all needed inventory stocks
+      const itemIds = txData.items.map((item) => item.itemId);
+      let stockMap = new Map<string, any>();
+
+      if (itemIds.length > 0) {
+        const existingStocks = await tx
           .select()
           .from(inventoryStocks)
-          .where(and(eq(inventoryStocks.warehouseId, txData.warehouseId), eq(inventoryStocks.itemId, item.itemId)))
-          .limit(1);
+          .where(
+            and(
+              eq(inventoryStocks.warehouseId, txData.warehouseId),
+              inArray(inventoryStocks.itemId, itemIds)
+            )
+          );
+
+        stockMap = new Map(existingStocks.map((stock) => [stock.itemId, stock]));
+      }
+
+      // Process items
+      for (const item of txData.items) {
+        const stock = stockMap.get(item.itemId);
 
         const qty = Number(item.quantity);
 
@@ -56,7 +70,7 @@ export class TransactionService {
       }
 
       // Update status
-      await txData.status;
+
       await TransactionModel.updateStatus(transactionId, "COMPLETED", userId);
     });
   }
@@ -70,12 +84,26 @@ export class TransactionService {
       if (!txData) return;
 
       await db.transaction(async (tx) => {
-        for (const item of txData.items) {
-          const [stock] = await tx
+        // ⚡ Bolt: Prevent N+1 query by batch fetching all needed inventory stocks
+        const itemIds = txData.items.map((item) => item.itemId);
+        let stockMap = new Map<string, any>();
+
+        if (itemIds.length > 0) {
+          const existingStocks = await tx
             .select()
             .from(inventoryStocks)
-            .where(and(eq(inventoryStocks.warehouseId, txData.warehouseId), eq(inventoryStocks.itemId, item.itemId)))
-            .limit(1);
+            .where(
+              and(
+                eq(inventoryStocks.warehouseId, txData.warehouseId),
+                inArray(inventoryStocks.itemId, itemIds)
+              )
+            );
+
+          stockMap = new Map(existingStocks.map((stock) => [stock.itemId, stock]));
+        }
+
+        for (const item of txData.items) {
+          const stock = stockMap.get(item.itemId);
           
           if (stock) {
             const qty = Number(item.quantity);
