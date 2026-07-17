@@ -19,7 +19,7 @@ import { approvalSteps } from "../../modules/approval-step/approval-step.schema"
 import { userWarehouseRoles, roles } from "../../modules/role/role.schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 
-export type DocumentType = "PR" | "QP" | "PO" | "GR" | "QC" | "SCRAP";
+export type DocumentType = "PR" | "QP" | "PO" | "GR" | "QC" | "SCRAP" | "AO";
 
 /**
  * Resolve the `requiredApprovalStage` for a user on a given document type.
