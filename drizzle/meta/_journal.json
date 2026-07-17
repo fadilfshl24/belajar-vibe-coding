@@ -211,6 +211,20 @@
       "when": 1784098727080,
       "tag": "0030_hesitant_gamma_corps",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784253760357,
+      "tag": "0031_abandoned_bromley",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784274547669,
+      "tag": "0032_parched_fat_cobra",
+      "breakpoints": true
     }
   ]
 }
