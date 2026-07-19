@@ -10,31 +10,39 @@ export class DashboardController {
   static async getKpi(ctx: Context) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
     try {
-      // 1. Total Barang Masuk (sum of quantities from IN transactions that are COMPLETED)
-      const [inbound] = await db
-        .select({ total: sql<number>`COALESCE(sum(${transactionItems.quantity}), 0)` })
-        .from(transactionItems)
-        .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
-        .where(and(eq(transactions.type, "IN"), eq(transactions.status, "COMPLETED")));
+      // ⚡ Bolt: Optimize by grouping 4 independent database queries into Promise.all to run them concurrently
+      const [
+        [inbound],
+        [outbound],
+        [activeWarehouses],
+        [lowStock]
+      ] = await Promise.all([
+        // 1. Total Barang Masuk (sum of quantities from IN transactions that are COMPLETED)
+        db
+          .select({ total: sql<number>`COALESCE(sum(${transactionItems.quantity}), 0)` })
+          .from(transactionItems)
+          .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
+          .where(and(eq(transactions.type, "IN"), eq(transactions.status, "COMPLETED"))),
 
-      // 2. Total Barang Keluar (sum of quantities from OUT transactions that are COMPLETED)
-      const [outbound] = await db
-        .select({ total: sql<number>`COALESCE(sum(${transactionItems.quantity}), 0)` })
-        .from(transactionItems)
-        .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
-        .where(and(eq(transactions.type, "OUT"), eq(transactions.status, "COMPLETED")));
+        // 2. Total Barang Keluar (sum of quantities from OUT transactions that are COMPLETED)
+        db
+          .select({ total: sql<number>`COALESCE(sum(${transactionItems.quantity}), 0)` })
+          .from(transactionItems)
+          .innerJoin(transactions, eq(transactionItems.transactionId, transactions.id))
+          .where(and(eq(transactions.type, "OUT"), eq(transactions.status, "COMPLETED"))),
 
-      // 3. Gudang Aktif
-      const [activeWarehouses] = await db
-        .select({ count: sql<number>`cast(count(${warehouses.id}) as int)` })
-        .from(warehouses)
-        .where(eq(warehouses.isActive, true));
+        // 3. Gudang Aktif
+        db
+          .select({ count: sql<number>`cast(count(${warehouses.id}) as int)` })
+          .from(warehouses)
+          .where(eq(warehouses.isActive, true)),
 
-      // 4. Low Stock Items (quantity < 10)
-      const [lowStock] = await db
-        .select({ count: sql<number>`cast(count(${inventoryStocks.id}) as int)` })
-        .from(inventoryStocks)
-        .where(sql`${inventoryStocks.quantity} < 10`);
+        // 4. Low Stock Items (quantity < 10)
+        db
+          .select({ count: sql<number>`cast(count(${inventoryStocks.id}) as int)` })
+          .from(inventoryStocks)
+          .where(sql`${inventoryStocks.quantity} < 10`)
+      ]);
 
       const kpiData = {
         totalBarangMasuk: inbound?.total ?? 0,
