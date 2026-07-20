@@ -4,6 +4,8 @@ export interface ItemPackageDetailDTO {
   id: string;
   packageItemId: string;
   childItemId: string;
+  childItemCode?: string;
+  childItemName?: string;
   quantity: string;
   isActive: boolean;
   price: string;
@@ -37,9 +39,14 @@ export interface ItemDTO {
   details?: ItemPackageDetailDTO[];
 }
 
+export type DetailWithChildItem = ItemPackageDetailRecord & {
+  childItemCode?: string;
+  childItemName?: string;
+};
+
 export function toItemDTO(
   record: ItemRecord,
-  details?: ItemPackageDetailRecord[],
+  details?: DetailWithChildItem[],
   category?: { id: string; name: string } | null,
   uom?: { id: string; name: string } | null
 ): ItemDTO {
@@ -67,18 +74,20 @@ export function toItemDTO(
     ...(uom ? { uom } : {}),
     ...(details
       ? {
-          details: details.map((d) => ({
-            id: d.id,
-            packageItemId: d.packageItemId,
-            childItemId: d.childItemId,
-            quantity: d.quantity,
-            isActive: d.isActive,
-            price: d.price,
-            discountPercentage: d.discountPercentage,
-            discountPrice: d.discountPrice,
-            priceAfterDiscount: d.priceAfterDiscount,
-          })),
-        }
+        details: details.map((d) => ({
+          id: d.id,
+          packageItemId: d.packageItemId,
+          childItemId: d.childItemId,
+          childItemCode: d.childItemCode ?? d.childItemId,
+          childItemName: d.childItemName ?? d.childItemId,
+          quantity: d.quantity,
+          isActive: d.isActive,
+          price: d.price,
+          discountPercentage: d.discountPercentage,
+          discountPrice: d.discountPrice,
+          priceAfterDiscount: d.priceAfterDiscount,
+        })),
+      }
       : {}),
   };
 }

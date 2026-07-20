@@ -19,7 +19,7 @@ export class AssemblyOrderService {
           isNull(assemblyOrders.deletedAt),
           sql`${assemblyOrders.code} LIKE ${prefix + "%"}`
         ),
-        orderBy: desc => desc(assemblyOrders.code),
+        orderBy: (fields, { desc }) => [desc(fields.code)],
       });
 
       let nextNum = 1;
