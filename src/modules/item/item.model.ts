@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, ilike, isNull, or, inArray } from "drizzle-o
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { items, itemPackageDetails } from "./item.schema";
-import { toItemDTO, type ItemDTO } from "./item.dto";
+import { toItemDTO, type ItemDTO, type DetailWithChildItem } from "./item.dto";
 import type { ItemRecord, ItemPackageDetailRecord } from "./item.schema";
 import type { CreateItemInput, UpdateItemInput } from "./item.validation";
 import { uoms } from "../uom/uom.schema";
@@ -168,10 +168,22 @@ export class ItemModel {
     if (result.length === 0) return undefined;
     const row = result[0]!;
     if (row.item.itemType === "package") {
-      const details = await db
-        .select()
+      const detailsRaw = await db
+        .select({
+          detail: itemPackageDetails,
+          childItemCode: items.code,
+          childItemName: items.name,
+        })
         .from(itemPackageDetails)
+        .leftJoin(items, eq(itemPackageDetails.childItemId, items.id))
         .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
+
+      const details = detailsRaw.map(d => ({
+        ...d.detail,
+        childItemCode: d.childItemCode ?? undefined,
+        childItemName: d.childItemName ?? undefined,
+      }));
+
       return toItemDTO(row.item, details, row.category, row.uom);
     }
 
@@ -225,7 +237,7 @@ export class ItemModel {
 
       if (!insertedItem) throw new Error("Failed to create item");
 
-      const detailRecords: ItemPackageDetailRecord[] = [];
+      const detailRecords: DetailWithChildItem[] = [];
 
       if (payload.itemType === "package" && payload.details && payload.details.length > 0) {
         const childItemIds = payload.details.map(d => d.childItemId);
@@ -265,7 +277,17 @@ export class ItemModel {
             .insert(itemPackageDetails)
             .values(insertValues)
             .returning();
+<<<<<<< HEAD
           detailRecords.push(...insertedDetails);
+=======
+          if (insertedDetail) {
+            detailRecords.push({
+              ...insertedDetail,
+              childItemCode: childItem.code,
+              childItemName: childItem.name,
+            });
+          }
+>>>>>>> e1a0389 (update terakhir 20-07-2026)
         }
       }
 
@@ -385,6 +407,7 @@ export class ItemModel {
               isActive: true,
               createdBy: userId,
               updatedBy: userId,
+<<<<<<< HEAD
             };
           });
 
@@ -394,14 +417,35 @@ export class ItemModel {
               .values(insertValues)
               .returning();
             detailRecords.push(...insertedDetails);
+=======
+            })
+            .returning();
+          if (insertedDetail) {
+            detailRecords.push({
+              ...insertedDetail,
+              childItemCode: childItem.code,
+              childItemName: childItem.name,
+            });
+>>>>>>> e1a0389 (update terakhir 20-07-2026)
           }
         }
         return toItemDTO(updatedItem, detailRecords, category[0] || null, uom[0] || null);
       } else if (itemType === "package") {
-        const details = await tx
-          .select()
+        const detailsRaw = await tx
+          .select({
+            detail: itemPackageDetails,
+            childItemCode: items.code,
+            childItemName: items.name,
+          })
           .from(itemPackageDetails)
+          .leftJoin(items, eq(itemPackageDetails.childItemId, items.id))
           .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
+
+        const details = detailsRaw.map(d => ({
+          ...d.detail,
+          childItemCode: d.childItemCode ?? undefined,
+          childItemName: d.childItemName ?? undefined,
+        }));
         return toItemDTO(updatedItem, details, category[0] || null, uom[0] || null);
       }
 

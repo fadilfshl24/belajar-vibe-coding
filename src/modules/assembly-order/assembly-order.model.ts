@@ -16,7 +16,7 @@ async function generateAssemblyOrderCode(): Promise<string> {
       isNull(assemblyOrders.deletedAt),
       sql`${assemblyOrders.code} LIKE ${prefix + "%"}`
     ),
-    orderBy: desc(assemblyOrders.code),
+    orderBy: [desc(assemblyOrders.code)],
   });
 
   let nextNum = 1;
