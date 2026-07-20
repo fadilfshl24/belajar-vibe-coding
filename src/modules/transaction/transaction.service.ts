@@ -34,6 +34,9 @@ export class TransactionService {
         const qty = Number(item.quantity);
 
         if (txData.type === "IN") {
+          currentQty += qty;
+          updatedStockMap.set(item.itemId, currentQty);
+
           if (stock) {
             updatePromises.push(
               tx.update(inventoryStocks)
