@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
 
 export class TransactionService {
@@ -11,30 +11,46 @@ export class TransactionService {
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
     await db.transaction(async (tx) => {
-      // Process items
-      for (const item of txData.items) {
-        const [stock] = await tx
-          .select()
-          .from(inventoryStocks)
-          .where(and(eq(inventoryStocks.warehouseId, txData.warehouseId), eq(inventoryStocks.itemId, item.itemId)))
-          .limit(1);
+      // ⚡ Bolt Optimization: Batch fetch stocks to avoid N+1 queries
+      const itemIds = txData.items.map(item => item.itemId);
+      const stocks = itemIds.length > 0
+        ? await tx
+            .select()
+            .from(inventoryStocks)
+            .where(
+              and(
+                eq(inventoryStocks.warehouseId, txData.warehouseId),
+                inArray(inventoryStocks.itemId, itemIds)
+              )
+            )
+        : [];
+      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
 
+      const insertPayloads = [];
+      const updatePromises = [];
+
+      for (const item of txData.items) {
+        const stock = stockMap.get(item.itemId);
         const qty = Number(item.quantity);
 
         if (txData.type === "IN") {
+          currentQty += qty;
+          updatedStockMap.set(item.itemId, currentQty);
+
           if (stock) {
-            await tx
-              .update(inventoryStocks)
-              .set({ 
-                quantity: (Number(stock.quantity) + qty).toString(), 
-                updatedAt: new Date(),
-                updatedBy: userId
-              })
-              .where(eq(inventoryStocks.id, stock.id));
+            updatePromises.push(
+              tx.update(inventoryStocks)
+                .set({
+                  quantity: (Number(stock.quantity) + qty).toString(),
+                  updatedAt: new Date(),
+                  updatedBy: userId
+                })
+                .where(eq(inventoryStocks.id, stock.id))
+            );
           } else {
-            await tx.insert(inventoryStocks).values({
+            insertPayloads.push({
               warehouseId: txData.warehouseId,
-              itemId: item.itemId,
+              itemId: itemId,
               quantity: qty.toString(),
               createdBy: userId,
               updatedBy: userId,
@@ -42,21 +58,29 @@ export class TransactionService {
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.quantity) < qty) {
-            throw new Error(`Insufficient stock for item ${item.itemId}`);
+            throw new Error(`Insufficient stock for item ${itemId}`);
           }
-          await tx
-            .update(inventoryStocks)
-            .set({ 
-              quantity: (Number(stock.quantity) - qty).toString(), 
-              updatedAt: new Date(),
-              updatedBy: userId
-            })
-            .where(eq(inventoryStocks.id, stock.id));
+          updatePromises.push(
+            tx.update(inventoryStocks)
+              .set({
+                quantity: (Number(stock.quantity) - qty).toString(),
+                updatedAt: new Date(),
+                updatedBy: userId
+              })
+              .where(eq(inventoryStocks.id, stock.id))
+          );
         }
       }
 
+      // ⚡ Bolt Optimization: Batch insert and parallel updates
+      if (insertPayloads.length > 0) {
+        await tx.insert(inventoryStocks).values(insertPayloads);
+      }
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+      }
+
       // Update status
-      await txData.status;
       await TransactionModel.updateStatus(transactionId, "COMPLETED", userId);
     });
   }
@@ -70,37 +94,56 @@ export class TransactionService {
       if (!txData) return;
 
       await db.transaction(async (tx) => {
+        // ⚡ Bolt Optimization: Batch fetch stocks to avoid N+1 queries
+        const itemIds = txData.items.map(item => item.itemId);
+        const stocks = itemIds.length > 0
+          ? await tx
+              .select()
+              .from(inventoryStocks)
+              .where(
+                and(
+                  eq(inventoryStocks.warehouseId, txData.warehouseId),
+                  inArray(inventoryStocks.itemId, itemIds)
+                )
+              )
+          : [];
+        const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+
+        const updatePromises = [];
+
         for (const item of txData.items) {
-          const [stock] = await tx
-            .select()
-            .from(inventoryStocks)
-            .where(and(eq(inventoryStocks.warehouseId, txData.warehouseId), eq(inventoryStocks.itemId, item.itemId)))
-            .limit(1);
+          const stock = stockMap.get(item.itemId);
           
           if (stock) {
-            const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
-              await tx
-                .update(inventoryStocks)
-                .set({ 
-                  quantity: (Number(stock.quantity) - qty).toString(), 
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              updatePromises.push(
+                tx.update(inventoryStocks)
+                  .set({
+                    quantity: (Number(stock.quantity) - qty).toString(),
+                    updatedAt: new Date(),
+                    updatedBy: approvedBy
+                  })
+                  .where(eq(inventoryStocks.id, stock.id))
+              );
             } else {
               // Revert OUT -> add
-              await tx
-                .update(inventoryStocks)
-                .set({ 
-                  quantity: (Number(stock.quantity) + qty).toString(), 
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              updatePromises.push(
+                tx.update(inventoryStocks)
+                  .set({
+                    quantity: (Number(stock.quantity) + qty).toString(),
+                    updatedAt: new Date(),
+                    updatedBy: approvedBy
+                  })
+                  .where(eq(inventoryStocks.id, stock.id))
+              );
             }
           }
+        }
+
+        // ⚡ Bolt Optimization: Parallelize updates
+        if (updatePromises.length > 0) {
+          await Promise.all(updatePromises);
         }
       });
     }

@@ -1,0 +1,580 @@
+$ bun run --watch src/index.ts
+🦊 WMS Server running at http://localhost:3000
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, $6, $7, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,LOGIN,AUTH,User Superadmin berhasil masuk ke sistem,,Bun/1.2.14
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, $6, $7, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "LOGIN", "AUTH", "User Superadmin berhasil masuk ke sistem",
+  "", "Bun/1.2.14"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,WAREHOUSE,User adminit@gmail.com menambahkan data Warehouse "Gudang Master Test Surabaya" dengan ID d143523f-04f0-43d3-937b-97a4f6838995
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "WAREHOUSE", "User adminit@gmail.com menambahkan data Warehouse \"Gudang Master Test Surabaya\" dengan ID d143523f-04f0-43d3-937b-97a4f6838995"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,UPDATE_DATA,WAREHOUSE,User adminit@gmail.com mengubah data Warehouse ID d143523f-04f0-43d3-937b-97a4f6838995
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "UPDATE_DATA", "WAREHOUSE", "User adminit@gmail.com mengubah data Warehouse ID d143523f-04f0-43d3-937b-97a4f6838995"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,WAREHOUSE,User adminit@gmail.com menugaskan user ID 15fcf085-2c6f-4504-9e6f-364c8706c544 sebagai kepala gudang ID d143523f-04f0-43d3-937b-97a4f6838995
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "WAREHOUSE", "User adminit@gmail.com menugaskan user ID 15fcf085-2c6f-4504-9e6f-364c8706c544 sebagai kepala gudang ID d143523f-04f0-43d3-937b-97a4f6838995"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,DELETE_DATA,WAREHOUSE,User adminit@gmail.com melepas tugas kepala gudang ID 159bc33b-9f71-4168-b065-0d3315ef7a41
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "DELETE_DATA", "WAREHOUSE", "User adminit@gmail.com melepas tugas kepala gudang ID 159bc33b-9f71-4168-b065-0d3315ef7a41"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,DELETE_DATA,WAREHOUSE,User adminit@gmail.com menghapus data Warehouse ID d143523f-04f0-43d3-937b-97a4f6838995
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "DELETE_DATA", "WAREHOUSE", "User adminit@gmail.com menghapus data Warehouse ID d143523f-04f0-43d3-937b-97a4f6838995"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,CATEGORY,User adminit@gmail.com menambahkan data Category "Elektronik Master Test" dengan ID cfca3a5a-dd66-4771-9b9b-54fa6aa9ec39
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "CATEGORY", "User adminit@gmail.com menambahkan data Category \"Elektronik Master Test\" dengan ID cfca3a5a-dd66-4771-9b9b-54fa6aa9ec39"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,UPDATE_DATA,CATEGORY,User adminit@gmail.com mengubah data Category ID cfca3a5a-dd66-4771-9b9b-54fa6aa9ec39
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "UPDATE_DATA", "CATEGORY", "User adminit@gmail.com mengubah data Category ID cfca3a5a-dd66-4771-9b9b-54fa6aa9ec39"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,UOM,User adminit@gmail.com menambahkan data UOM "Pieces Master Test" dengan ID d6dd50af-dc3a-4ebe-97bb-47034012a91e
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "UOM", "User adminit@gmail.com menambahkan data UOM \"Pieces Master Test\" dengan ID d6dd50af-dc3a-4ebe-97bb-47034012a91e"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,UPDATE_DATA,UOM,User adminit@gmail.com mengubah data UOM ID d6dd50af-dc3a-4ebe-97bb-47034012a91e
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "UPDATE_DATA", "UOM", "User adminit@gmail.com mengubah data UOM ID d6dd50af-dc3a-4ebe-97bb-47034012a91e"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,CATEGORY,User adminit@gmail.com menambahkan data Item "Charger USB-C Master Test" (single) dengan ID 4abcd239-72f4-419e-a3b1-b7002abf199f
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "CATEGORY", "User adminit@gmail.com menambahkan data Item \"Charger USB-C Master Test\" (single) dengan ID 4abcd239-72f4-419e-a3b1-b7002abf199f"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,CATEGORY,User adminit@gmail.com menambahkan data Item "Kabel Data USB-C Master Test" (single) dengan ID 83604efd-15c8-473b-a6d6-a7a547bd11da
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "CATEGORY", "User adminit@gmail.com menambahkan data Item \"Kabel Data USB-C Master Test\" (single) dengan ID 83604efd-15c8-473b-a6d6-a7a547bd11da"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,UPDATE_DATA,CATEGORY,User adminit@gmail.com mengubah data Item ID 4abcd239-72f4-419e-a3b1-b7002abf199f
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "UPDATE_DATA", "CATEGORY", "User adminit@gmail.com mengubah data Item ID 4abcd239-72f4-419e-a3b1-b7002abf199f"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,CATEGORY,User adminit@gmail.com menambahkan data Item "Paket Charger Komplit Master Test" (package) dengan ID 56cc2099-0427-4b0f-92e7-f5ad3121c29e
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "CATEGORY", "User adminit@gmail.com menambahkan data Item \"Paket Charger Komplit Master Test\" (package) dengan ID 56cc2099-0427-4b0f-92e7-f5ad3121c29e"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,DELETE_DATA,CATEGORY,User adminit@gmail.com menghapus data Item ID 4abcd239-72f4-419e-a3b1-b7002abf199f
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "DELETE_DATA", "CATEGORY", "User adminit@gmail.com menghapus data Item ID 4abcd239-72f4-419e-a3b1-b7002abf199f"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,DELETE_DATA,CATEGORY,User adminit@gmail.com menghapus data Item ID 83604efd-15c8-473b-a6d6-a7a547bd11da
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "DELETE_DATA", "CATEGORY", "User adminit@gmail.com menghapus data Item ID 83604efd-15c8-473b-a6d6-a7a547bd11da"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,DELETE_DATA,CATEGORY,User adminit@gmail.com menghapus data Item ID 56cc2099-0427-4b0f-92e7-f5ad3121c29e
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "DELETE_DATA", "CATEGORY", "User adminit@gmail.com menghapus data Item ID 56cc2099-0427-4b0f-92e7-f5ad3121c29e"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+[ActivityLogger] Failed to log activity: 36 |   async queryWithCache(queryString, params, query) {
+37 |     if (this.cache === void 0 || is(this.cache, NoopCache) || this.queryMetadata === void 0) {
+38 |       try {
+39 |         return await query();
+40 |       } catch (e) {
+41 |         throw new DrizzleQueryError(queryString, params, e);
+                   ^
+error: Failed query: insert into "activity_logs" ("id", "user_id", "username", "action", "module", "description", "ip_address", "user_agent", "created_at", "updated_at", "deleted_at", "created_by", "updated_by") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)
+params: 15fcf085-2c6f-4504-9e6f-364c8706c544,Superadmin,CREATE_DATA,CATEGORY,User adminit@gmail.com menambahkan data Item "Item Guard Master" (single) dengan ID 55cd40c7-ffc2-4c25-89a6-a118c2a6b222
+  query: "insert into \"activity_logs\" (\"id\", \"user_id\", \"username\", \"action\", \"module\", \"description\", \"ip_address\", \"user_agent\", \"created_at\", \"updated_at\", \"deleted_at\", \"created_by\", \"updated_by\") values (default, $1, $2, $3, $4, $5, default, default, default, default, default, default, default)",
+ params: [
+  "15fcf085-2c6f-4504-9e6f-364c8706c544", "Superadmin", "CREATE_DATA", "CATEGORY", "User adminit@gmail.com menambahkan data Item \"Item Guard Master\" (single) dengan ID 55cd40c7-ffc2-4c25-89a6-a118c2a6b222"
+],
+
+      at queryWithCache (/app/node_modules/drizzle-orm/pg-core/session.js:41:15)
+
+811 |     }
+812 |   )
+813 |   Error.captureStackTrace(error, notSupported)
+814 |   return error
+815 | }
+          ^
+PostgresError: column "module" of relation "activity_logs" does not exist
+ severity_local: "ERROR",
+   severity: "ERROR",
+   position: "69",
+       file: "parse_target.c",
+    routine: "checkInsertTargets",
+       code: "42703"
+
+      at ErrorResponse (/app/node_modules/postgres/src/errors.js:815:5)
+
+error: script "dev" was terminated by signal SIGTERM (Polite quit request)
