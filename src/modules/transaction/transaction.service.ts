@@ -47,7 +47,7 @@ export class TransactionService {
           } else {
             insertPayloads.push({
               warehouseId: txData.warehouseId,
-              itemId: item.itemId,
+              itemId: itemId,
               quantity: qty.toString(),
               createdBy: userId,
               updatedBy: userId,
@@ -55,7 +55,7 @@ export class TransactionService {
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.quantity) < qty) {
-            throw new Error(`Insufficient stock for item ${item.itemId}`);
+            throw new Error(`Insufficient stock for item ${itemId}`);
           }
           updatePromises.push(
             tx.update(inventoryStocks)
@@ -78,7 +78,6 @@ export class TransactionService {
       }
 
       // Update status
-      await txData.status;
       await TransactionModel.updateStatus(transactionId, "COMPLETED", userId);
     });
   }
@@ -113,7 +112,6 @@ export class TransactionService {
           const stock = stockMap.get(item.itemId);
           
           if (stock) {
-            const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
               updatePromises.push(
