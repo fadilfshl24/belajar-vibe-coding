@@ -1,5 +1,5 @@
 ---
-trigger: always_on
+trigger: manual
 ---
 
 Buatkan struktur folder hanya untuk project base berikut :
@@ -41,13 +41,14 @@ src :
          - redis.ts
          - socket.ts
     - modules
-         - [module_name].types.ts
-         - [module_name].controllers.ts
-         - [module_name].dtos.ts
-         - [module_name].models.ts
-         - [module_name].routes.ts
-         - [module_name].schemas.ts
-         - [module_name].validations.ts
+         - [modules_name]
+              - [module_name].types.ts
+              - [module_name].controllers.ts
+              - [module_name].dtos.ts
+              - [module_name].models.ts
+              - [module_name].routes.ts
+              - [module_name].schemas.ts
+              - [module_name].validations.ts
     - utils
            # Tergantung kebutuhan utilitynya jika dia berfungsi untuk mapping data dari thirdparty maka Handler, jika convert kode atau convert response maka Helper.
          - handler

@@ -225,6 +225,20 @@
       "when": 1784274547669,
       "tag": "0032_parched_fat_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784599155700,
+      "tag": "0033_rare_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784600710201,
+      "tag": "0034_unify_approvals",
+      "breakpoints": true
     }
   ]
 }

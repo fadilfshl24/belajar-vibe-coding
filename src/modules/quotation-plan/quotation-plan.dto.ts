@@ -1,4 +1,5 @@
-import type { QuotationPlanRecord, QuotationPlanDetailRecord, QuotationPlanApprovalRecord } from "./quotation-plan.schema";
+import type { QuotationPlanRecord, QuotationPlanDetailRecord } from "./quotation-plan.schema";
+import type { DocumentApprovalRecord } from "../approval/document-approval.schema";
 import type { PurchaseRequestDTO } from "../purchase-request/purchase-request.dto";
 import type { WarehouseDTO } from "../warehouse/warehouse.dto";
 import type { UserDTO } from "../user/user.dto";
@@ -10,7 +11,7 @@ export type QuotationPlanDetailDTO = Omit<QuotationPlanDetailRecord, "deletedAt"
   vendor?: VendorDTO;
 };
 
-export type QuotationPlanApprovalDTO = Omit<QuotationPlanApprovalRecord, "deletedAt"> & {
+export type QuotationPlanApprovalDTO = Omit<DocumentApprovalRecord, "deletedAt"> & {
   approver?: UserDTO | null;
 };
 

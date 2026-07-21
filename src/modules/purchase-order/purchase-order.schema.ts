@@ -81,25 +81,7 @@ export const purchaseOrderRequests = pgTable(
   ]
 );
 
-// Approval trail for PO: WH Head → Branch Head → Manager
-export const purchaseOrderApprovals = pgTable(
-  "purchase_order_approvals",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
-    stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER
-    status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
-    approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at", { withTimezone: true }),
-    remark: text("remark"),
-    ...auditColumns,
-  },
-  (t) => [
-    index("idx_poa_po_id").on(t.purchaseOrderId),
-    index("idx_poa_stage").on(t.stage),
-    index("idx_poa_status").on(t.status),
-  ]
-);
+import { documentApprovals } from "../approval/document-approval.schema";
 
 export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
   quotationPlan: one(require("../quotation-plan/quotation-plan.schema").quotationPlans, {
@@ -120,7 +102,9 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many })
   }),
   details: many(purchaseOrderDetails),
   purchaseRequests: many(purchaseOrderRequests),
-  approvals: many(purchaseOrderApprovals),
+  approvals: many(documentApprovals, {
+    relationName: "purchaseOrderApprovals",
+  }),
 }));
 
 export const purchaseOrderDetailsRelations = relations(purchaseOrderDetails, ({ one }) => ({
@@ -149,20 +133,9 @@ export const purchaseOrderRequestsRelations = relations(purchaseOrderRequests, (
   }),
 }));
 
-export const purchaseOrderApprovalsRelations = relations(purchaseOrderApprovals, ({ one }) => ({
-  purchaseOrder: one(purchaseOrders, {
-    fields: [purchaseOrderApprovals.purchaseOrderId],
-    references: [purchaseOrders.id],
-  }),
-  approver: one(users, {
-    fields: [purchaseOrderApprovals.approvedBy],
-    references: [users.id],
-  }),
-}));
-
 export type PurchaseOrderRecord = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderInsert = typeof purchaseOrders.$inferInsert;
 export type PurchaseOrderDetailRecord = typeof purchaseOrderDetails.$inferSelect;
 export type PurchaseOrderDetailInsert = typeof purchaseOrderDetails.$inferInsert;
 export type PurchaseOrderRequestRecord = typeof purchaseOrderRequests.$inferSelect;
-export type PurchaseOrderApprovalRecord = typeof purchaseOrderApprovals.$inferSelect;
+

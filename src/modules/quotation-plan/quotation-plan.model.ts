@@ -1,5 +1,6 @@
 import { db } from "../../core/db";
-import { quotationPlans, quotationPlanDetails, quotationPlanApprovals } from "./quotation-plan.schema";
+import { quotationPlans, quotationPlanDetails } from "./quotation-plan.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 import { purchaseOrders, purchaseOrderDetails, purchaseOrderRequests } from "../purchase-order/purchase-order.schema";
 import { itemPriceHistories } from "../item/item.schema";
@@ -217,12 +218,13 @@ export class QuotationPlanModel {
       }
 
       // Record approval
-      await tx.insert(quotationPlanApprovals).values({
-        quotationPlanId: id,
+      await tx.insert(documentApprovals).values({
+        documentType: "QP",
+        documentId: id,
         stage: stage,
-        approverId: userId,
+        approvedBy: userId,
         status: payload.status,
-        notes: payload.notes,
+        remark: payload.notes,
         createdBy: userId,
       });
 
@@ -295,11 +297,11 @@ export class QuotationPlanModel {
         where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
       });
       
-      const prIds = qpPrs.map(p => p.purchaseRequestId);
+      const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
 
       if (prIds.length > 0) {
         await tx.insert(purchaseOrderRequests).values(
-          prIds.map(prId => ({
+          prIds.map((prId: any) => ({
             purchaseOrderId: po.id,
             purchaseRequestId: prId,
           }))

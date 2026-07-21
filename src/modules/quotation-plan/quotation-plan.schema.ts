@@ -60,22 +60,7 @@ export const quotationPlanDetails = pgTable(
   ]
 );
 
-export const quotationPlanApprovals = pgTable(
-  "quotation_plan_approvals",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    quotationPlanId: uuid("quotation_plan_id").notNull().references(() => quotationPlans.id, { onDelete: "cascade" }),
-    stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD
-    approverId: uuid("approver_id").references(() => users.id),
-    status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
-    notes: text("notes"),
-    ...auditColumns,
-  },
-  (t) => [
-    index("idx_qp_approvals_qp_id").on(t.quotationPlanId),
-    index("idx_qp_approvals_stage").on(t.stage),
-  ]
-);
+import { documentApprovals } from "../approval/document-approval.schema";
 
 export const quotationPlanPurchaseRequests = pgTable(
   "quotation_plan_purchase_requests",
@@ -93,7 +78,6 @@ export const quotationPlanPurchaseRequests = pgTable(
 
 export type QuotationPlanRecord = typeof quotationPlans.$inferSelect;
 export type QuotationPlanDetailRecord = typeof quotationPlanDetails.$inferSelect;
-export type QuotationPlanApprovalRecord = typeof quotationPlanApprovals.$inferSelect;
 export type QuotationPlanPurchaseRequestRecord = typeof quotationPlanPurchaseRequests.$inferSelect;
 
 export const quotationPlansRelations = relations(quotationPlans, ({ one, many }) => ({
@@ -106,7 +90,9 @@ export const quotationPlansRelations = relations(quotationPlans, ({ one, many })
     references: [users.id],
   }),
   details: many(quotationPlanDetails),
-  approvals: many(quotationPlanApprovals),
+  approvals: many(documentApprovals, {
+    relationName: "quotationPlanApprovals",
+  }),
   purchaseRequests: many(quotationPlanPurchaseRequests),
 }));
 
@@ -140,13 +126,3 @@ export const quotationPlanDetailsRelations = relations(quotationPlanDetails, ({ 
   }),
 }));
 
-export const quotationPlanApprovalsRelations = relations(quotationPlanApprovals, ({ one }) => ({
-  quotationPlan: one(quotationPlans, {
-    fields: [quotationPlanApprovals.quotationPlanId],
-    references: [quotationPlans.id],
-  }),
-  approver: one(users, {
-    fields: [quotationPlanApprovals.approverId],
-    references: [users.id],
-  }),
-}));

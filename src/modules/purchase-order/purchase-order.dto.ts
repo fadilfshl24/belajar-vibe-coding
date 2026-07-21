@@ -1,4 +1,5 @@
-import type { PurchaseOrderRecord, PurchaseOrderDetailRecord, PurchaseOrderApprovalRecord, PurchaseOrderRequestRecord } from "./purchase-order.schema";
+import type { PurchaseOrderRecord, PurchaseOrderDetailRecord, PurchaseOrderRequestRecord } from "./purchase-order.schema";
+import type { DocumentApprovalRecord } from "../approval/document-approval.schema";
 import type { VendorDTO } from "../vendor/vendor.dto";
 import type { WarehouseDTO } from "../warehouse/warehouse.dto";
 import type { PurchaseRequestDTO } from "../purchase-request/purchase-request.dto";
@@ -10,7 +11,7 @@ export type PODetailDTO = Omit<PurchaseOrderDetailRecord, "deletedAt"> & {
   quotationPlanDetail?: any;
 };
 
-export type POApprovalDTO = Omit<PurchaseOrderApprovalRecord, "deletedAt"> & {
+export type POApprovalDTO = Omit<DocumentApprovalRecord, "deletedAt"> & {
   approver?: UserDTO | null;
 };
 

@@ -1,5 +1,6 @@
-import { pgTable, uuid, varchar, text, boolean, index, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, boolean, index, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
+import { sql } from "drizzle-orm";
 
 export const customerTypeEnum = pgEnum("customer_type", ["company", "personal"]);
 
@@ -7,7 +8,7 @@ export const customers = pgTable(
   "customers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    code: varchar("code", { length: 100 }).notNull().unique(),
+    code: varchar("code", { length: 100 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     email: varchar("email", { length: 255 }),
     type: customerTypeEnum("type").notNull().default("company"),
@@ -25,6 +26,7 @@ export const customers = pgTable(
     ...auditColumns,
   },
   (t) => [
+    uniqueIndex("idx_customers_code_active").on(t.code).where(sql`deleted_at IS NULL`),
     index("idx_customers_code").on(t.code),
     index("idx_customers_is_active").on(t.isActive),
     index("idx_customers_deleted_at").on(t.deletedAt),

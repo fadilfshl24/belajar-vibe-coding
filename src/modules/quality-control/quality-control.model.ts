@@ -1,6 +1,7 @@
 import { eq, and, desc, isNull, inArray, ne, or } from "drizzle-orm";
 import { db } from "../../core/db";
-import { qualityControls, qualityControlDetails, qualityControlApprovals } from "./quality-control.schema";
+import { qualityControls, qualityControlDetails } from "./quality-control.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { goodsReceipts, goodsReceiptDetails } from "../goods-receipt/goods-receipt.schema";
 import { inventoryStocks } from "../inventory/inventory.schema";
 import { transactions, transactionItems } from "../transaction/transaction.schema";
@@ -146,7 +147,7 @@ export class QualityControlModel {
           with: { item: true }
         },
         approvals: {
-          where: isNull(qualityControlApprovals.deletedAt),
+          where: isNull(documentApprovals.deletedAt),
           with: { approver: true }
         }
       }
@@ -268,8 +269,9 @@ export class QualityControlModel {
       }
 
       // Record approval
-      await tx.insert(qualityControlApprovals).values({
-        qualityControlId: qc.id,
+      await tx.insert(documentApprovals).values({
+        documentType: "QC",
+        documentId: qc.id,
         stage: qc.currentApprovalStage,
         status: 1, // Approved
         approvedBy: userId,
@@ -424,8 +426,9 @@ export class QualityControlModel {
         }
       }
 
-      await tx.insert(qualityControlApprovals).values({
-        qualityControlId: qc.id,
+      await tx.insert(documentApprovals).values({
+        documentType: "QC",
+        documentId: qc.id,
         stage: qc.currentApprovalStage,
         status: 2, // Rejected
         approvedBy: userId,
