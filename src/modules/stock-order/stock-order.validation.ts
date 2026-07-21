@@ -14,7 +14,8 @@ export const listStockOrderQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(10),
   search: z.string().optional().nullable().or(z.literal("")),
   warehouseId: z.string().uuid().optional().nullable().or(z.literal("")),
-  status: z.enum(["UNPACKED", "PACKED", "RETURNED"]).optional().nullable().or(z.literal("")),
+  paymentMethod: z.string().optional().nullable().or(z.literal("")),
+  status: z.enum(["UNPACKED", "PACKED", "SENDING", "DONE", "RETURNED"]).optional().nullable().or(z.literal("")),
   type: z.enum(["INBOUND", "OUTBOUND"]).optional().nullable().or(z.literal("")),
   purchaseChannel: z.enum(["TikTok", "Shopee", "Lazada", "Tokopedia", "Lainnya"]).optional().nullable().or(z.literal("")),
 });

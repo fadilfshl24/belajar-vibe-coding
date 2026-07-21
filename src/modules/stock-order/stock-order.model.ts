@@ -11,7 +11,8 @@ interface FindAllOptions {
   warehouseId?: string;
   warehouseIds?: string[];
   search?: string;
-  status?: "UNPACKED" | "PACKED" | "RETURNED";
+  status?: "UNPACKED" | "PACKED" | "SENDING" | "DONE" | "RETURNED";
+  paymentMethod?: string;
   type?: "INBOUND" | "OUTBOUND";
   purchaseChannel?: string;
 }
@@ -92,6 +93,7 @@ export class StockOrderModel {
       conditions.push(inArray(stockOrders.warehouseId, opts.warehouseIds));
     }
     if (opts.status) conditions.push(eq(stockOrders.status, opts.status));
+    if (opts.paymentMethod) conditions.push(ilike(stockOrders.paymentMethod, `%${opts.paymentMethod}%`));
     if (opts.type) conditions.push(eq(stockOrders.type, opts.type));
     if (opts.purchaseChannel) conditions.push(eq(stockOrders.purchaseChannel, opts.purchaseChannel));
     
@@ -115,7 +117,9 @@ export class StockOrderModel {
         orderId: stockOrders.orderId,
         status: stockOrders.status,
         type: stockOrders.type,
+        paymentMethod: stockOrders.paymentMethod,
         recipient: stockOrders.recipient,
+        warehouseId: stockOrders.warehouseId,
         warehouseName: warehouses.name,
         createdAt: stockOrders.createdAt,
       })
