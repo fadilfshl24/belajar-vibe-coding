@@ -88,16 +88,19 @@ export class QuotationPlanController {
         requiredApprovalStage = await resolveRequiredApprovalStage(userId, "QP");
       }
 
-      const rows = await QuotationPlanModel.findAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-        requiredApprovalStage,
-      });
-      const totalCount = await QuotationPlanModel.countAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-        requiredApprovalStage,
-      });
+      // ⚡ Bolt: Execute findAll and countAll concurrently to reduce overall latency
+      const [rows, totalCount] = await Promise.all([
+        QuotationPlanModel.findAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+          requiredApprovalStage,
+        }),
+        QuotationPlanModel.countAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+          requiredApprovalStage,
+        })
+      ]);
 
       return successResponse(correlationId, "Success", rows.map(toQuotationPlanDTO), {
         page: params.page,

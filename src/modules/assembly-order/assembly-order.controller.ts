@@ -84,14 +84,17 @@ export class AssemblyOrderController {
         }
       }
 
-      const rows = await AssemblyOrderModel.findAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-      });
-      const totalCount = await AssemblyOrderModel.countAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-      });
+      // ⚡ Bolt: Execute findAll and countAll concurrently to reduce overall latency
+      const [rows, totalCount] = await Promise.all([
+        AssemblyOrderModel.findAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+        }),
+        AssemblyOrderModel.countAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+        })
+      ]);
 
       const totalPage = Math.ceil(totalCount / params.limit) || 1;
 
