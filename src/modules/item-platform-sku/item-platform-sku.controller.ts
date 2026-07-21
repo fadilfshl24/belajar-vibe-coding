@@ -7,7 +7,8 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import { ItemModel } from "../item/item.model";
 import { db } from "../../core/db";
 import { platforms } from "../platform/platform.schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
+import { itemPlatformSkus } from "./item-platform-sku.schema";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MODULE_TYPE = 'ITEM_PLATFORM_SKU';
@@ -68,6 +69,21 @@ export class ItemPlatformSkuController {
       if (!platform) {
         ctx.set.status = 400;
         return failedResponse(correlationId, "Create data failed!", 400, "Platform not found!");
+      }
+
+      // Cek apakah item ini sudah terhubung dengan platform tersebut
+      const existingPlatformMapping = await db.select().from(itemPlatformSkus)
+        .where(
+          and(
+            eq(itemPlatformSkus.itemId, itemId),
+            eq(itemPlatformSkus.platformId, parsed.data.platformId),
+            isNull(itemPlatformSkus.deletedAt)
+          )
+        )
+        .limit(1);
+      if (existingPlatformMapping.length > 0) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Create data failed!", 400, "Item ini sudah terhubung dengan platform tersebut");
       }
 
       const existingSku = await ItemPlatformSkuModel.findByPlatformSku(parsed.data.platformSku);
