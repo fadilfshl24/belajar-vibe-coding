@@ -4,7 +4,6 @@ import { AssemblyOrderService } from "./assembly-order.service";
 import {
   parseCreateAssemblyOrderInput,
   parseAssemblyOrderListQuery,
-  parseApproveAssemblyOrderInput,
 } from "./assembly-order.validation";
 import { failedResponse, successResponse } from "../../core/utils/response";
 import type { JwtPayload } from "../../core/types/JwtPayload";
@@ -39,7 +38,7 @@ export class AssemblyOrderController {
 
         const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
         const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
-        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head"].includes(r));
+        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head", "staff"].includes(r));
 
         if (!isGlobalViewer && isRestrictedByWarehouse) {
           const mappings = await db
