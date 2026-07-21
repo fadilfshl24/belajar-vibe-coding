@@ -277,17 +277,13 @@ export class ItemModel {
             .insert(itemPackageDetails)
             .values(insertValues)
             .returning();
-<<<<<<< HEAD
-          detailRecords.push(...insertedDetails);
-=======
-          if (insertedDetail) {
+          if (insertedDetails) {
             detailRecords.push({
-              ...insertedDetail,
-              childItemCode: childItem.code,
-              childItemName: childItem.name,
+              ...insertedDetails,
+              childItemCode: childItems.code,
+              childItemName: childItems.name,
             });
           }
->>>>>>> e1a0389 (update terakhir 20-07-2026)
         }
       }
 
@@ -407,7 +403,6 @@ export class ItemModel {
               isActive: true,
               createdBy: userId,
               updatedBy: userId,
-<<<<<<< HEAD
             };
           });
 
@@ -416,17 +411,15 @@ export class ItemModel {
               .insert(itemPackageDetails)
               .values(insertValues)
               .returning();
-            detailRecords.push(...insertedDetails);
-=======
-            })
-            .returning();
-          if (insertedDetail) {
-            detailRecords.push({
-              ...insertedDetail,
-              childItemCode: childItem.code,
-              childItemName: childItem.name,
-            });
->>>>>>> e1a0389 (update terakhir 20-07-2026)
+
+            for (const d of insertedDetails) {
+              const childItem = childItemsMap.get(d.childItemId);
+              detailRecords.push({
+                ...d,
+                childItemCode: childItem?.code,
+                childItemName: childItem?.name,
+              });
+            }
           }
         }
         return toItemDTO(updatedItem, detailRecords, category[0] || null, uom[0] || null);
