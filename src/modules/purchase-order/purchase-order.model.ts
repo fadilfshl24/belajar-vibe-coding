@@ -5,8 +5,8 @@ import {
   purchaseOrders,
   purchaseOrderDetails,
   purchaseOrderRequests,
-  purchaseOrderApprovals,
 } from "./purchase-order.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { purchaseRequests } from "../purchase-request/purchase-request.schema";
 import { toPurchaseOrderDTO, type PurchaseOrderDTO } from "./purchase-order.dto";
 import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
@@ -155,7 +155,7 @@ export class PurchaseOrderModel {
         },
         approvals: {
           with: { approver: true },
-          orderBy: asc(purchaseOrderApprovals.stage),
+          orderBy: asc(documentApprovals.stage),
         },
       },
     });
@@ -379,10 +379,10 @@ export class PurchaseOrderModel {
       if (!po) throw new Error("Purchase order not found");
       if (po.status !== 0) throw new Error("Hanya PO berstatus Draft yang dapat di-submit.");
 
-      await tx.insert(purchaseOrderApprovals).values([
-        { purchaseOrderId: id, stage: 0, status: 0, createdBy: userId, updatedBy: userId },
-        { purchaseOrderId: id, stage: 1, status: 0, createdBy: userId, updatedBy: userId },
-        { purchaseOrderId: id, stage: 2, status: 0, createdBy: userId, updatedBy: userId },
+      await tx.insert(documentApprovals).values([
+        { documentType: "PO", documentId: id, stage: 0, status: 0, createdBy: userId, updatedBy: userId },
+        { documentType: "PO", documentId: id, stage: 1, status: 0, createdBy: userId, updatedBy: userId },
+        { documentType: "PO", documentId: id, stage: 2, status: 0, createdBy: userId, updatedBy: userId },
       ]);
 
       await tx.update(purchaseOrders)
@@ -435,9 +435,13 @@ export class PurchaseOrderModel {
         if (stage === 2 && isManager) canReject = true;
         if (!canReject) throw new Error("Anda tidak memiliki akses untuk menolak PO pada tahap ini.");
 
-        await tx.update(purchaseOrderApprovals)
+        await tx.update(documentApprovals)
           .set({ status: 2, approvedBy: userId, approvedAt: new Date(), remark: payload.remark ?? null, updatedAt: new Date(), updatedBy: userId })
-          .where(and(eq(purchaseOrderApprovals.purchaseOrderId, id), eq(purchaseOrderApprovals.stage, stage)));
+          .where(and(
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.stage, stage)
+          ));
 
         await tx.update(purchaseOrders)
           .set({ status: 3, updatedAt: new Date(), updatedBy: userId })
@@ -449,17 +453,22 @@ export class PurchaseOrderModel {
         if (stage === 2 && isManager) canApprove = true;
         if (!canApprove) throw new Error("Anda tidak memiliki akses untuk menyetujui PO pada tahap ini.");
 
-        await tx.update(purchaseOrderApprovals)
+        await tx.update(documentApprovals)
           .set({ status: 1, approvedBy: userId, approvedAt: new Date(), remark: payload.remark ?? null, updatedAt: new Date(), updatedBy: userId })
-          .where(and(eq(purchaseOrderApprovals.purchaseOrderId, id), eq(purchaseOrderApprovals.stage, stage)));
+          .where(and(
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.stage, stage)
+          ));
 
-        const nextPending = await tx.query.purchaseOrderApprovals.findFirst({
+        const nextPending = await tx.query.documentApprovals.findFirst({
           where: and(
-            eq(purchaseOrderApprovals.purchaseOrderId, id),
-            eq(purchaseOrderApprovals.status, 0),
-            isNull(purchaseOrderApprovals.deletedAt)
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.status, 0),
+            isNull(documentApprovals.deletedAt)
           ),
-          orderBy: asc(purchaseOrderApprovals.stage),
+          orderBy: asc(documentApprovals.stage),
         });
 
         if (nextPending) {

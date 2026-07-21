@@ -7,11 +7,13 @@ import {
   decimal,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 import { uoms } from "../uom/uom.schema";
 import { itemCategories } from "../category/category.schema";
 import { vendors } from "../vendor/vendor.schema";
+import { sql } from "drizzle-orm";
 
 /**
  * Enum: item_type
@@ -34,7 +36,7 @@ export const items = pgTable(
   "items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    code: varchar("code", { length: 100 }).notNull().unique(),
+    code: varchar("code", { length: 100 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     uomId: uuid("uom_id")
@@ -43,7 +45,7 @@ export const items = pgTable(
     categoryId: uuid("category_id")
       .notNull()
       .references(() => itemCategories.id),
-    barcodeText: varchar("barcode_text", { length: 150 }).unique(),
+    barcodeText: varchar("barcode_text", { length: 150 }),
     barcodeType: varchar("barcode_type", { length: 50 }),  // EAN-13, CODE-128, QR, dll.
     imageUrl: text("image_url"),
     itemType: itemTypeEnum("item_type").notNull().default("single"),
@@ -60,6 +62,8 @@ export const items = pgTable(
     ...auditColumns,
   },
   (t) => [
+    uniqueIndex("idx_items_code_active").on(t.code).where(sql`deleted_at IS NULL`),
+    uniqueIndex("idx_items_barcode_text_active").on(t.barcodeText).where(sql`deleted_at IS NULL`),
     index("idx_items_code").on(t.code),
     index("idx_items_uom_id").on(t.uomId),
     index("idx_items_category_id").on(t.categoryId),

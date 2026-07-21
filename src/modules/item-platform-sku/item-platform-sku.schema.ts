@@ -1,7 +1,8 @@
-import { pgTable, uuid, varchar, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 import { items } from "../item/item.schema";
 import { platforms } from "../platform/platform.schema";
+import { sql } from "drizzle-orm";
 
 export const itemPlatformSkus = pgTable(
   "item_platform_skus",
@@ -13,13 +14,13 @@ export const itemPlatformSkus = pgTable(
     platformId: uuid("platform_id")
       .notNull()
       .references(() => platforms.id),
-    platformSku: varchar("platform_sku", { length: 100 }).notNull().unique(),
+    platformSku: varchar("platform_sku", { length: 100 }).notNull(),
     ...auditColumns,
   },
   (t) => [
     index("idx_item_platform_skus_item_id").on(t.itemId),
     index("idx_item_platform_skus_platform_id").on(t.platformId),
-    index("idx_item_platform_skus_platform_sku").on(t.platformSku),
+    uniqueIndex("idx_item_platform_skus_platform_sku").on(t.platformSku).where(sql`deleted_at IS NULL`),
     index("idx_item_platform_skus_deleted_at").on(t.deletedAt),
   ]
 );

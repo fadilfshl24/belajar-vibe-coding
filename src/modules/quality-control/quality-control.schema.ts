@@ -4,6 +4,7 @@ import { auditColumns } from "../../core/db/audit";
 import { goodsReceipts, goodsReceiptDetails } from "../goods-receipt/goods-receipt.schema";
 import { users } from "../user/user.schema";
 import { items } from "../item/item.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 
 export const qualityControls = pgTable(
   "quality_controls",
@@ -53,29 +54,6 @@ export const qualityControlDetails = pgTable(
   ]
 );
 
-export const qualityControlApprovals = pgTable(
-  "quality_control_approvals",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    qualityControlId: uuid("quality_control_id")
-      .notNull()
-      .references(() => qualityControls.id, { onDelete: "cascade" }),
-    stage: integer("stage").notNull(),
-    status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
-    approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at", { withTimezone: true }),
-    remark: text("remark"),
-    isActive: boolean("is_active").notNull().default(true),
-    ...auditColumns,
-  },
-  (t) => [
-    index("idx_qc_approvals_qc_id").on(t.qualityControlId),
-    index("idx_qc_approvals_approved_by").on(t.approvedBy),
-    index("idx_qc_approvals_qc_id_stage").on(t.qualityControlId, t.stage),
-    index("idx_qc_approvals_deleted_at").on(t.deletedAt),
-  ]
-);
-
 export const qualityControlsRelations = relations(qualityControls, ({ one, many }) => ({
   goodsReceipt: one(goodsReceipts, {
     fields: [qualityControls.goodsReceiptId],
@@ -86,7 +64,9 @@ export const qualityControlsRelations = relations(qualityControls, ({ one, many 
     references: [users.id],
   }),
   details: many(qualityControlDetails),
-  approvals: many(qualityControlApprovals),
+  approvals: many(documentApprovals, {
+    relationName: "qualityControlApprovals",
+  }),
 }));
 
 export const qualityControlDetailsRelations = relations(qualityControlDetails, ({ one }) => ({
@@ -104,20 +84,7 @@ export const qualityControlDetailsRelations = relations(qualityControlDetails, (
   }),
 }));
 
-export const qualityControlApprovalsRelations = relations(qualityControlApprovals, ({ one }) => ({
-  qualityControl: one(qualityControls, {
-    fields: [qualityControlApprovals.qualityControlId],
-    references: [qualityControls.id],
-  }),
-  approver: one(users, {
-    fields: [qualityControlApprovals.approvedBy],
-    references: [users.id],
-  }),
-}));
-
 export type QualityControlRecord = typeof qualityControls.$inferSelect;
 export type QualityControlInsert = typeof qualityControls.$inferInsert;
 export type QualityControlDetailRecord = typeof qualityControlDetails.$inferSelect;
 export type QualityControlDetailInsert = typeof qualityControlDetails.$inferInsert;
-export type QualityControlApprovalRecord = typeof qualityControlApprovals.$inferSelect;
-export type QualityControlApprovalInsert = typeof qualityControlApprovals.$inferInsert;

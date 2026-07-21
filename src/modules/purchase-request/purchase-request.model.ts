@@ -1,7 +1,8 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
-import { purchaseRequests, purchaseRequestDetails, purchaseRequestApprovals } from "./purchase-request.schema";
+import { purchaseRequests, purchaseRequestDetails } from "./purchase-request.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { toPurchaseRequestDTO, type PurchaseRequestDTO } from "./purchase-request.dto";
 import type { PurchaseRequestRecord } from "./purchase-request.schema";
 import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
@@ -447,8 +448,9 @@ export class PurchaseRequestModel {
           updatePayload.approvedAt = new Date();
 
           // Insert 1 row representing Manager approval
-          await tx.insert(purchaseRequestApprovals).values({
-            purchaseRequestId: id,
+          await tx.insert(documentApprovals).values({
+            documentType: "PR",
+            documentId: id,
             stage: 2, // Manager
             status: 1, // Approved
             approvedBy: pr.requestedBy,
@@ -474,13 +476,14 @@ export class PurchaseRequestModel {
 
           // Insert pending approvals
           const approvalValues = stagesToInsert.map(stage => ({
-            purchaseRequestId: id,
+            documentType: "PR",
+            documentId: id,
             stage,
             status: 0, // Pending
             createdBy: userId,
             updatedBy: userId,
           }));
-          await tx.insert(purchaseRequestApprovals).values(approvalValues);
+          await tx.insert(documentApprovals).values(approvalValues);
         }
       } 
       // 2. Approving or Rejecting when Pending (1)
@@ -496,7 +499,7 @@ export class PurchaseRequestModel {
 
           // Update active stage approval record to Rejected (2)
           await tx
-            .update(purchaseRequestApprovals)
+            .update(documentApprovals)
             .set({
               status: 2, // Rejected
               approvedBy: userId,
@@ -507,8 +510,9 @@ export class PurchaseRequestModel {
             })
             .where(
               and(
-                eq(purchaseRequestApprovals.purchaseRequestId, id),
-                eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+                eq(documentApprovals.documentType, "PR"),
+                eq(documentApprovals.documentId, id),
+                eq(documentApprovals.stage, pr.currentApprovalStage)
               )
             );
 
@@ -526,7 +530,7 @@ export class PurchaseRequestModel {
 
             // Set all pending approval steps to Approved
             await tx
-              .update(purchaseRequestApprovals)
+              .update(documentApprovals)
               .set({
                 status: 1, // Approved
                 approvedBy: userId,
@@ -537,8 +541,9 @@ export class PurchaseRequestModel {
               })
               .where(
                 and(
-                  eq(purchaseRequestApprovals.purchaseRequestId, id),
-                  eq(purchaseRequestApprovals.status, 0)
+                  eq(documentApprovals.documentType, "PR"),
+                  eq(documentApprovals.documentId, id),
+                  eq(documentApprovals.status, 0)
                 )
               );
 
@@ -558,7 +563,7 @@ export class PurchaseRequestModel {
 
             // Update the current approval step to Approved
             await tx
-              .update(purchaseRequestApprovals)
+              .update(documentApprovals)
               .set({
                 status: 1, // Approved
                 approvedBy: userId,
@@ -569,19 +574,21 @@ export class PurchaseRequestModel {
               })
               .where(
                 and(
-                  eq(purchaseRequestApprovals.purchaseRequestId, id),
-                  eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+                  eq(documentApprovals.documentType, "PR"),
+                  eq(documentApprovals.documentId, id),
+                  eq(documentApprovals.stage, pr.currentApprovalStage)
                 )
               );
 
             // Determine if there are more pending stages
-            const nextPending = await tx.query.purchaseRequestApprovals.findFirst({
+            const nextPending = await tx.query.documentApprovals.findFirst({
               where: and(
-                eq(purchaseRequestApprovals.purchaseRequestId, id),
-                eq(purchaseRequestApprovals.status, 0), // Pending
-                isNull(purchaseRequestApprovals.deletedAt)
+                eq(documentApprovals.documentType, "PR"),
+                eq(documentApprovals.documentId, id),
+                eq(documentApprovals.status, 0), // Pending
+                isNull(documentApprovals.deletedAt)
               ),
-              orderBy: asc(purchaseRequestApprovals.stage),
+              orderBy: asc(documentApprovals.stage),
             });
 
             if (nextPending) {

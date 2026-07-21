@@ -29,7 +29,7 @@ export class InventoryController {
 
         const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
         const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
-        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head"].includes(r));
+        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head", "staff"].includes(r));
 
         if (!isGlobalViewer && isRestrictedByWarehouse) {
           const mappings = await db
@@ -58,21 +58,6 @@ export class InventoryController {
               orderBy: "",
             });
           }
-        } else if (!isGlobalViewer && !isRestrictedByWarehouse) {
-          // If neither global viewer nor restricted (e.g. staff without warehouse mappings)
-          return successResponse(correlationId, "Success", [], {
-            page,
-            limit,
-            totalRecord: 0,
-            totalPage: 0,
-            nextPage: false,
-            previousPage: false,
-            nextPageURL: "",
-            previousPageURL: "",
-            filterColumn: "",
-            searchTerm: searchTerm ?? "",
-            orderBy: "",
-          });
         }
       }
 
