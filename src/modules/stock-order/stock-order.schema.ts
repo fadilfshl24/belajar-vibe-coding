@@ -12,7 +12,7 @@ export const stockOrders = pgTable(
     trackingId: varchar("tracking_id", { length: 150 }).notNull(),
     orderId: varchar("order_id", { length: 150 }).notNull(),
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
-    status: varchar("status", { length: 50 }).notNull().default("UNPACKED"), // UNPACKED, PACKED, RETURNED
+    status: varchar("status", { length: 50 }).notNull().default("UNPACKED"), // UNPACKED, PACKED, SENDING, DONE, RETURNED
     type: varchar("type", { length: 50 }).notNull().default("OUTBOUND"), // INBOUND, OUTBOUND
     paymentMethod: varchar("payment_method", { length: 100 }),
     shippingProviderName: varchar("shipping_provider_name", { length: 150 }),

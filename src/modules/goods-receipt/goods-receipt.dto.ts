@@ -24,6 +24,7 @@ export function toGoodsReceiptDTO(gr: any) {
       address: gr.vendor.address,
     } : undefined,
     warehouse: gr.warehouse ? {
+      ...gr.warehouse,
       id: gr.warehouse.id,
       name: gr.warehouse.name,
       code: gr.warehouse.code,

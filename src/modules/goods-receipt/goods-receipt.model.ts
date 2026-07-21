@@ -4,6 +4,7 @@ import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
 import { toGoodsReceiptDTO, type GoodsReceiptDTO } from "./goods-receipt.dto";
 import type { CreateGoodsReceiptInput } from "./goods-receipt.validation";
+import { WarehouseModel, WarehouseHeadModel } from "../warehouse/warehouse.model";
 
 async function generateGRCode(): Promise<string> {
   const today = new Date();
@@ -104,7 +105,22 @@ export class GoodsReceiptModel {
       }
     });
 
-    return result ? toGoodsReceiptDTO(result) : undefined;
+    if (!result) return undefined;
+
+    const dto = toGoodsReceiptDTO(result);
+    if (result.warehouseId) {
+      const fullWarehouse = await WarehouseModel.findById(result.warehouseId);
+      if (fullWarehouse) {
+        const heads = await WarehouseHeadModel.findByWarehouse(result.warehouseId);
+        dto.warehouse = {
+          ...dto.warehouse,
+          ...fullWarehouse,
+          heads,
+        } as any;
+      }
+    }
+
+    return dto;
   }
 
   static async create(payload: CreateGoodsReceiptInput, userId: string): Promise<GoodsReceiptDTO | undefined> {
