@@ -19,10 +19,12 @@ export const stockOrders = pgTable(
     buyerUsername: varchar("buyer_username", { length: 150 }),
     recipient: varchar("recipient", { length: 255 }),
     phone: varchar("phone", { length: 50 }),
-    address: text("address"),
     sellerNote: text("seller_note"),
     platformCreatedAt: timestamp("platform_created_at", { withTimezone: true }),
     platformPaidAt: timestamp("platform_paid_at", { withTimezone: true }),
+    platformRTSAt: timestamp("platform_rts_at", { withTimezone: true }),
+    platformShippedAt: timestamp("platform_shipped_at", { withTimezone: true }),
+    platformDeliveredAt: timestamp("platform_delivered_at", { withTimezone: true }),
     ...auditColumns,
   },
   (t) => [

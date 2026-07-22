@@ -77,10 +77,7 @@ export class StockOrderController {
       const stockOrdersMap = new Map<string, { order: StockOrderInsert; items: StockOrderItemInsert[] }>();
 
       for (const row of jsonData) {
-        let orderId = "";
-        let trackingId = "";
-        let skuId = "";
-        let skuName = "";
+        let orderId = "", trackingId = "", skuId = "", skuName = "", paymentMethod = "", shippingProviderName = "", buyerUsername = "", recipient = "", phone = "", sellerNote = "";
         let quantity = 0;
         
         // TikTok mappings
@@ -90,6 +87,12 @@ export class StockOrderController {
           skuId = row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
           skuName = row["Product Name"]?.toString() || "";
           quantity = Number(row["Quantity"]) || 0;
+          paymentMethod = row["Payment Method"]?.toString() || null
+          shippingProviderName = row["Shipping Provider Name"]?.toString() || null
+          buyerUsername = row["Buyer Username"]?.toString() || null
+          recipient = row["Recipient"]?.toString() || null;
+          phone = row["Phone #"]?.toString() || null
+          sellerNote = row["Seller Note"]?.toString() || null
         } else {
           // Fallback or handle SHOPEE, LAZADA, TOKOPEDIA when they have exact templates
           orderId = row["Order ID"]?.toString() || row["order_id"]?.toString() || "";
@@ -102,6 +105,7 @@ export class StockOrderController {
         if (!trackingId || !skuId) continue;
 
         const itemId = skuMap.get(skuId.toUpperCase());
+        
         if (!itemId) {
           // In a real app we might reject the file or save a mapping error. For now, we skip or use a fallback? 
           // If strict, we throw error. Let's throw error to notify user that SKU is not mapped.
@@ -118,12 +122,12 @@ export class StockOrderController {
               warehouseId,
               status: "UNPACKED",
               type: "OUTBOUND",
-              paymentMethod: row["Payment Method"]?.toString() || null,
-              shippingProviderName: row["Shipping Provider Name"]?.toString() || null,
-              buyerUsername: row["Buyer Username"]?.toString() || null,
-              recipient: row["Recipient"]?.toString() || null,
-              phone: row["Phone #"]?.toString() || null,
-              sellerNote: row["Seller Note"]?.toString() || null,
+              paymentMethod,
+              shippingProviderName,
+              buyerUsername,
+              recipient,
+              phone,
+              sellerNote,
               createdBy: userId,
             },
             items: []

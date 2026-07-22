@@ -219,3 +219,45 @@ Buatkan perencanaan untuk module Assembly Order (Perakitan dari bahan mentah men
 Buatkan flowchart (Mermaid), use case (Mermaid), sequence diagram (Mermaid) dan ERD nya di issue serta implementation plannya.  
 
 Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-scanning-outbound-by-resi.md
+
+Buatkan issues-scanning-outbound-by-resi.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk frontend :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000.
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk backend :
+1. Pastikan untuk struktur folder itu modular (module, schema, controller, model, service, validation, route, dto)
+2. Gunakan drizzle orm
+3. Pastikan untuk table databasenya di tambahkan indexing jika berelasi dengan table lain.
+4. Pastikan juga untuk performanya agar cepat dan tidak lelet
+5. Untuk naming database, table dan field itu gunakan snake_case.
+6. Pastikan setelah membuat modulenya maka file api-listnya di update pada direktori belajar-vibe-coding/documentation/api-list.md
+
+Buatkan perencanaan untuk penambahan fitur pada module outbound khususnya untuk role staff, warehouse head dan admin saja, untuk dibuatkan page tambahan yaitu untuk scanning barcode yang dimana barcode tersebut isinya adalah tracking_id yang ada di table stock_order. Dimana module outbound ini digunakan untuk memproses pengambilan barang yang akan dikirim ke customer atau ke ekspedisi. Untuk stepnya yaitu :
+1. User akan scan barcodenya, lalu sistem mengecek ke server apakah tracking_id dari barcode tersebut statusnya masih UNPACKED, jika statusnya itu UNPACKED maka akan muncul dialog yang dimana isinya itu informasi stock_order beserta stock_order_item dari tracking_id tersebut.
+2. Tambahkan validasi juga untuk data warehousenya apakah resi tersebut berada di warehouse yang user tersebut scan atau bukan, jika tidak maka munculkan notif toast "No. Resi bukan untuk Gudang anda"
+3. Lalu di bawah card informasi stock order tersebut ada card form input baru yang dimana isinya itu untuk user mapping product apa saja yang terdapat pada resi tersebut dan akan di sesuaikan oleh user, yang dimana nantinya ketika user mengconfirm form tersebut akan mengurangi stock barang yang sudah di mapping tersebut dan tambahkan remark juga jika ada catatan khusus dari user. Untuk barangnya bisa multiple atau bisa lebih dari 1, dan tambahkan juga di form inputnya untuk memberikan flagging pada barang yang jika di return akan mengembalikan stock di gudang atau tidak, seperti checkbox Auto Restock If Return. jika di checklist maka ketika resi tersebut di return stocknya akan otomatis bertambah di inventory_stocks berdasarkan gudang masing - masing user.
+4. Jika statusnya itu PACKED maka sistem memunculkan notif toast yaitu "No. Resi sudah di packing, harap cek kembali"
+5. Jika statusnya itu SENDING maka sistem memunculkan notif toast yaitu "No. Resi sudah dikirim ke ekspedisi.". Nama ekspedisinya itu sesuai dengan yang ada di table stock_order.
+6. Jika statusnya itu DONE maka sistem memunculkan notif toast yaitu "No. Resi sudah diterima oleh customer."
+7. Jika statusnya itu RETURNED maka sistem memunculkan notif toast yaitu "No. Resi sudah direturn oleh customer, harap cek kembali di gudang anda."
+8. Dan ketika user mengconfirm form input tersebut maka statusnya akan berubah menjadi PACKED.
+
+Buatkan juga perencanaan untuk penambahan fitur pada module inbound khususnya untuk warehouse head dan admin saja, untuk dibuatkan page tambahan yaitu untuk scanning barcode yang dimana barcode tersebut isinya adalah tracking_id yang ada di table stock_order. Dimana module inbound ini digunakan untuk memproses pengembalian barang yang dikirim oleh customer. Untuk stepnya yaitu :
+1. User akan scan barcodenya, lalu sistem mengecek ke server apakah tracking_id dari barcode tersebut statusnya masih PACKED atau SENDING, jika statusnya itu PACKED atau SENDING maka akan muncul dialog yang dimana isinya itu informasi stock_order beserta stock_order_item dari tracking_id tersebut.
+2. Tambahkan validasi juga untuk data warehousenya apakah resi tersebut berada di warehouse yang user tersebut scan atau bukan, jika tidak maka munculkan notif toast "No. Resi bukan untuk Gudang anda"
+3. Dan ketika user mengconfirm form input tersebut maka statusnya akan berubah menjadi RETURNED.
+
+Buatkan flowchart (Mermaid), use case (Mermaid), sequence diagram (Mermaid) dan ERD nya di issue serta implementation plannya.  
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
