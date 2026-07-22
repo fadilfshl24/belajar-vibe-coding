@@ -191,3 +191,31 @@ Buatkan perencanaan untuk membuat tampilan notification transaction yang masuk u
 Untuk semua data yang masuk ke dalam module masing - masing pastikan sesuai dengan mappingan data usernya. agar tidak tercampur dengan data user lain yang tidak memiliki hak akses untuk melihat data tersebut.
 
 Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-assembly-product-selling.md
+Buatkan issues-assembly-product-selling.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk frontend :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000.
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk backend :
+1. Pastikan untuk struktur folder itu modular (module, schema, controller, model, service, validation, route, dto)
+2. Gunakan drizzle orm
+3. Pastikan untuk table databasenya di tambahkan indexing jika berelasi dengan table lain.
+4. Pastikan juga untuk performanya agar cepat dan tidak lelet
+5. Untuk naming database, table dan field itu gunakan snake_case.
+6. Pastikan setelah membuat modulenya maka file api-listnya di update pada direktori belajar-vibe-coding/documentation/api-list.md
+
+Buatkan perencanaan untuk module Assembly Order (Perakitan dari bahan mentah menjadi produk jadi) yang dimana dimodule ini itu untuk mencatat total barang hasil perakitan atau packing yang dimana barang yang sudah di packing tersebut akan menjadi produk siap jual / siap packing ke customer atau ke ekspedisi, dan otomatis merestock produk siap jual ini di masing - masing gudang jika sudah di setujui oleh warehouse head. Tolong buatkan dengan validasi yang ketat karna produk siap jual ini akan berada di master data barang, yang dimana dia bertipe Produk dijual maka dari itu dia pasti ada component item detailnya dan pastikan ketika item yang di tuju itu akan di packing akan memunculkan visualisasi gambaran dari masing - masing bahan mentahnya apakah mencukupi atau tidak. Pastikan visualisasi nya itu seperti kartu yang menampilkan gambar, nama, kode, stock awal, stock akhir, stock yang digunakan dan stock yang akan di kembalikan. serta pastikan juga ada tombol untuk konfirmasi. Karna dalam 1 kali proses pencatatan barang bisa multi produk dan produk tersebut berasal dari bahan mentah yang sama pastikan stock bahan mentahnya tidak anomali. Misalkan bahan mentah A terdapat 100 Stock, Produk A membutuhkan 80 bahan mentah A dan Produk B membutuhkan 40 bahan mentah A, maka muncul notifikasi karna bahan mentah yang di butuhkan itu kurang. atau ketika user ingin menginput Produk B di berikan validasi hanya bisa membuat 20 saja karna sisa dari bahan mentahnya hanya 20 (100 stock - 80 yang sudah dipakai di produk A). Dan untuk biaya produksi atau HPP nya juga dari master data, tinggal di jumlahkan saja dari harga purchase di kalikan qty yang dibutuhkan dan di jumlahkan dengan bahan mentah lain.
+
+Buatkan flowchart (Mermaid), use case (Mermaid), sequence diagram (Mermaid) dan ERD nya di issue serta implementation plannya.  
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.

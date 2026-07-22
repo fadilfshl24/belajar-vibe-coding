@@ -42,13 +42,18 @@ import { staticPlugin } from "@elysiajs/static";
  */
 export const app = new Elysia()
   .onRequest(({ request, set }) => {
-    set.headers["Access-Control-Allow-Origin"] = "http://localhost:5173";
+    const origin = request.headers.get("origin");
+    if (origin) {
+      set.headers["Access-Control-Allow-Origin"] = origin;
+    } else {
+      set.headers["Access-Control-Allow-Origin"] = "*";
+    }
     set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
     set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
     set.headers["Access-Control-Allow-Credentials"] = "true";
 
     if (request.method === "OPTIONS") {
-      return new Response(null, {
+      return new Response(null, { 
         status: 204,
         headers: set.headers as Record<string, string>,
       });
