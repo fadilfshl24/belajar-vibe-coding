@@ -25,4 +25,4 @@ export * from "../../modules/notification/notification.schema";
 export * from "../../modules/scrap/scrap.schema";
 export * from "../../modules/stock-order/stock-order.schema";
 export * from "../../modules/assembly-order/assembly-order.schema";
-export * from "../../modules/approval/document-approval.schema";
+export * from "../../modules/approval/document-approval.schema";

@@ -19,6 +19,14 @@ export type PORequestDTO = Omit<PurchaseOrderRequestRecord, "deletedAt"> & {
   purchaseRequest?: PurchaseRequestDTO | null;
 };
 
+export type POApprovalDTO = Omit<PurchaseOrderApprovalRecord, "deletedAt"> & {
+  approver?: UserDTO | null;
+};
+
+export type PORequestDTO = Omit<PurchaseOrderRequestRecord, "deletedAt"> & {
+  purchaseRequest?: PurchaseRequestDTO | null;
+};
+
 export type PurchaseOrderDTO = Omit<PurchaseOrderRecord, "deletedAt"> & {
   details?: PODetailDTO[];
   vendor?: VendorDTO | null;
@@ -61,6 +69,26 @@ export function toPurchaseOrderDTO(record: any): PurchaseOrderDTO {
   if (quotationPlan) {
     const { deletedAt: qpDelAt, ...qpDto } = quotationPlan;
     dto.quotationPlan = qpDto;
+  }
+  if (purchaseRequests) {
+    dto.purchaseRequests = purchaseRequests.map((por: any) => {
+      const { deletedAt: porDelAt, purchaseRequest: pr, ...porDto } = por;
+      if (pr) {
+        const { deletedAt: prDelAt, details: prDetails, ...prDto } = pr;
+        porDto.purchaseRequest = prDto;
+      }
+      return porDto;
+    });
+  }
+  if (approvals) {
+    dto.approvals = approvals.map((a: any) => {
+      const { deletedAt: aDelAt, approver, ...aDto } = a;
+      if (approver) {
+        const { deletedAt: apvDelAt, password, ...apvDto } = approver;
+        aDto.approver = apvDto;
+      }
+      return aDto;
+    });
   }
   if (purchaseRequests) {
     dto.purchaseRequests = purchaseRequests.map((por: any) => {
