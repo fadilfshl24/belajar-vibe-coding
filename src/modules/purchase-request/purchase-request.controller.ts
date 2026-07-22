@@ -14,6 +14,10 @@ import { logActivity } from "../../core/utils/activityLogger";
 import { db } from "../../core/db";
 import { userWarehouseMappings, userWarehouseRoles, roles } from "../role/role.schema";
 import { eq, and, isNull, inArray } from "drizzle-orm";
+import { users } from "../user/user.schema";
+import { notificationWs } from "../notification/notification.ws";
+import { NotificationModel } from "../notification/notification.model";
+import { resolveRequiredApprovalStage } from "../../core/utils/approval-stage.resolver";
 
 export class PurchaseRequestController {
   static async getAll(ctx: Context & { user?: JwtPayload }) {
@@ -31,6 +35,7 @@ export class PurchaseRequestController {
       // ── Role-Based Visibility ─────────────────────────────────────────────────
       let requestedByUserId: string | undefined = undefined;
       let visibleWarehouseIds: string[] | undefined = undefined;
+      let requiredApprovalStage: number | undefined = undefined;
 
       const userId = ctx.user?.sub;
       if (userId) {
@@ -43,7 +48,9 @@ export class PurchaseRequestController {
 
         const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
         const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
-        const isRestrictedByWarehouse = roleCodes.some((r) => ["warehouse_head", "branch_head"].includes(r));
+        const isWarehouseHead = roleCodes.includes("warehouse_head");
+        const isBranchHead = roleCodes.includes("branch_head");
+        const isRestrictedByWarehouse = isWarehouseHead || isBranchHead;
         const isStaff = !isGlobalViewer && !isRestrictedByWarehouse;
 
         if (isStaff) {
@@ -63,13 +70,21 @@ export class PurchaseRequestController {
             );
           visibleWarehouseIds = mappings.map((m) => m.warehouseId);
         }
+        
+        // ── Stage-based approval filter (DYNAMIC via approval_steps) ─────────
+        // Resolve which approval stage this user is responsible for.
+        // If user has roles matching multiple stages → no restriction (undefined).
+        if (!isStaff) {
+          requiredApprovalStage = await resolveRequiredApprovalStage(userId, "PR");
+        }
+        // ────────────────────────────────────────────────────────────────────
         // superadmin / admin / manager: no additional filter
       }
       // ─────────────────────────────────────────────────────────────────────────
 
       const [totalRecord, records] = await Promise.all([
-        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId }),
-        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId }),
+        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, requiredApprovalStage }),
+        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, requiredApprovalStage }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;
@@ -327,6 +342,80 @@ export class PurchaseRequestController {
         description,
       });
 
+      // ── Dispatch Notification on PR Status Change ────────────────────────────
+      try {
+        const warehouseId = updated.warehouseId;
+        let targetRole: string | undefined;
+        let notifTitle = "";
+        let notifMessage = "";
+
+        if (pr.status === 0 && updated.status === 1) {
+          // Staff submitted PR → notify warehouse_head
+          targetRole = "warehouse_head";
+          notifTitle = `PR Baru Menunggu Persetujuan`;
+          notifMessage = `Purchase Request ${updated.code} telah diajukan dan membutuhkan persetujuan Anda.`;
+        } else if (updated.status === 1 && (updated.currentApprovalStage ?? 0) > (pr.currentApprovalStage ?? 0)) {
+          // PR approved by WH Head → notify branch_head
+          const nextRole = pr.currentApprovalStage === 0 ? "branch_head" : "manager";
+          targetRole = nextRole;
+          notifTitle = `PR Tahap Berikutnya: ${updated.code}`;
+          notifMessage = `Purchase Request ${updated.code} telah disetujui dan membutuhkan persetujuan tingkat selanjutnya.`;
+        } else if (updated.status === 2) {
+          // Fully approved → notify requester
+          targetRole = undefined; // direct to requester
+          const requesterUserId = updated.requestedBy;
+          if (requesterUserId) {
+            const { notification } = await NotificationModel.createAndDispatch({
+              sourceType: "PR",
+              sourceId: updated.id,
+              title: `PR Anda Telah Disetujui`,
+              message: `Purchase Request ${updated.code} telah mendapatkan semua persetujuan.`,
+              targetWarehouseId: warehouseId,
+            });
+            notificationWs.emitToUser(requesterUserId, "PR", {
+              ...notification,
+              isRead: false,
+            });
+          }
+        } else if (updated.status === 3) {
+          // Rejected → notify requester
+          const requesterUserId = updated.requestedBy;
+          if (requesterUserId) {
+            const { notification } = await NotificationModel.createAndDispatch({
+              sourceType: "PR",
+              sourceId: updated.id,
+              title: `PR Ditolak: ${updated.code}`,
+              message: `Purchase Request ${updated.code} telah ditolak${parsed.data.remark ? `: ${parsed.data.remark}` : "."}`,
+              targetWarehouseId: warehouseId,
+            });
+            notificationWs.emitToUser(requesterUserId, "PR", {
+              ...notification,
+              isRead: false,
+            });
+          }
+        }
+
+        // Dispatch notification to role-based targets (WH Head, Branch Head, etc.)
+        if (targetRole && warehouseId) {
+          const { notification, recipientUserIds } = await NotificationModel.createAndDispatch({
+            sourceType: "PR",
+            sourceId: updated.id,
+            title: notifTitle,
+            message: notifMessage,
+            targetRole,
+            targetWarehouseId: warehouseId,
+          });
+          notificationWs.emitToUsers(recipientUserIds, "PR", {
+            ...notification,
+            isRead: false,
+          });
+        }
+      } catch (notifErr) {
+        // Fire-and-forget: notification failure should not affect main response
+        console.error("[PR:updateStatus] Notification dispatch error:", notifErr);
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       return successResponse(correlationId, "Purchase request status updated", { record: updated });
     } catch (err: unknown) {
       ctx.set.status = 500;
@@ -366,9 +455,8 @@ export class PurchaseRequestController {
     }
   }
 
-  static async getApprovers(ctx: Context & { user?: JwtPayload }) {
+  static async getApprovers(ctx: Context) {
     const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
-
     try {
       const warehouseId = (ctx.params as Record<string, string>).warehouseId;
       if (!warehouseId) {
@@ -376,12 +464,41 @@ export class PurchaseRequestController {
         return failedResponse(correlationId, "Warehouse ID is required", 400);
       }
 
-      const approvers = await PurchaseRequestModel.getApprovers(warehouseId);
-      
-      return successResponse(correlationId, "Approvers fetched successfully", approvers);
+      const approversRows = await db
+        .select({
+          userId: users.id,
+          userName: users.name,
+          userEmail: users.email,
+          roleCode: roles.code,
+        })
+        .from(userWarehouseMappings)
+        .innerJoin(users, eq(userWarehouseMappings.userId, users.id))
+        .innerJoin(userWarehouseRoles, eq(userWarehouseRoles.userId, users.id))
+        .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+        .where(
+          and(
+            eq(userWarehouseMappings.warehouseId, warehouseId),
+            inArray(roles.code, ["warehouse_head", "branch_head", "manager"]),
+            eq(userWarehouseMappings.isActive, true),
+            isNull(userWarehouseMappings.deletedAt),
+            isNull(userWarehouseRoles.deletedAt),
+            isNull(roles.deletedAt),
+            isNull(users.deletedAt)
+          )
+        );
+
+      const warehouseHeads = approversRows.filter((r) => r.roleCode === "warehouse_head");
+      const branchHeads = approversRows.filter((r) => r.roleCode === "branch_head");
+      const managers = approversRows.filter((r) => r.roleCode === "manager");
+
+      return successResponse(correlationId, "Approvers found", {
+        warehouseHeads,
+        branchHeads,
+        managers,
+      });
     } catch (err: unknown) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Failed to fetch approvers", 500, err instanceof Error ? err.message : "Unknown error");
+      return failedResponse(correlationId, "Internal server error", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 }

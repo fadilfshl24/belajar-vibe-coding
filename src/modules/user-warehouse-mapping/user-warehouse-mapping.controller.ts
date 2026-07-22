@@ -30,6 +30,7 @@ export class UserWarehouseMappingController {
           warehouseId: userWarehouseMappings.warehouseId,
           userName: users.name,
           userEmail: users.email,
+          roleName: roles.name,
           warehouseCode: warehouses.code,
           warehouseName: warehouses.name,
           isActive: userWarehouseMappings.isActive,
@@ -37,6 +38,8 @@ export class UserWarehouseMappingController {
         .from(userWarehouseMappings)
         .innerJoin(users, eq(userWarehouseMappings.userId, users.id))
         .innerJoin(warehouses, eq(userWarehouseMappings.warehouseId, warehouses.id))
+        .leftJoin(userWarehouseRoles, and(eq(users.id, userWarehouseRoles.userId), isNull(userWarehouseRoles.deletedAt)))
+        .leftJoin(roles, and(eq(userWarehouseRoles.roleId, roles.id), isNull(roles.deletedAt)))
         .where(
           and(
             isNull(userWarehouseMappings.deletedAt),

@@ -121,3 +121,101 @@ Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk impleme
 
 # issues-purchase-request-planning-by-role.md
 
+Buatkan issues-purchase-request-planning-by-role.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Buatkan perencanaan untuk generate purchase request baru berdasarkan masing - masing role, yang dimana superadmin dan admin bisa langsung membuatkan purchase request, untuk role lainnya harus melalui create purchase request menggunakan fitur yang sudah ada, pastikan juga untuk role superadmin dan admin bisa melakukan update status dan approval dan bisa melakukan create, update, delete untuk purchase request.
+
+1. Untuk data purchase request yang di tampilkan disesuaikan dengan masing - masing role, jika dia staff maka dia hanya bisa melihat purchase request yang dia buat saja, jika dia warehouse head berarti dia bisa melihat semua purchase request yang di buat oleh staff di warehouse nya, jika dia branch head berarti dia bisa melihat semua purchase request yang di buat oleh staff dan warehouse head di branch nya, jika dia manager berarti dia bisa melihat semua purchase request yang di buat oleh staff, warehouse head dan branch head di branch nya, dan jika dia superadmin berarti dia bisa melihat semua purchase request yang di buat oleh staff, warehouse head, branch head dan manager di semua branch.
+2. Ketika staff membuat purchase request maka data warehouse otomatis berisi data warehouse yang dia saja dan tidak bisa memilih warehouse mana, begitu juga dengan customernya defaultnya menjadi nama dia.
+3. Untuk status purchase request pada create adalah draft, lalu ketika staff submit maka otomatis menjadi pending dan masuk keapproval warehouse head, begitu seterusnya sesuai dengan alur approval yang sudah ada.
+4. Buatkan juga tampilan monitoring approvalnya sudah sampai mana dan yang belum siapa untuk purchase request tersebut, agar user atau staff bisa follow up ke pihak yang bersangkutan.
+5. Buatkan juga untuk otomatisasi di sistem ketika purchase request sudah mendapatkan approval dari semua approval level, maka otomatis menjadi approved dan bisa di proses untuk pembuatan purchase ordernya, dan juga jika di reject maka otomatis statusnya menjadi rejected dan tidak bisa di proses untuk pembuatan purchase ordernya.
+6. Buatkan juga otomatisasi stock untuk masing - masing gudang tujuan ketika purchase request sudah di approve oleh manager, stock tidak bisa di edit lagi kecuali oleh superadmin.
+7. Buatkan juga notifikasi jika ada purchase request yang baru masuk ke approval level nya, dan ketika sudah di approve atau di reject.
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-quotation-plan.md
+
+Buatkan issues-quotation-plan.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Buatkan perencanaan untuk generate quotation plan dari item purchase request yang nantinya akan di generate jadi purchase order, karna ada case ketika request barang yang di minta tidak sepenuhnya terpenuhi sehingga butuh generate purchase order lagi untuk sisa barang yang di mintanya. yang dimana untuk generate quotation plan ini bisa dilakukan oleh admin dan superadmin saja dari item purchase request yang berstatus approved. untuk halaman ini di akses melalui halaman purchase request yang sudah approved dan ada item purchase request yang belum terpenuhi sehingga perlu dilakukan generate purchase order lagi karna bisa jadi purchase request yang diminta itu di order dari vendor yang berbeda dan itu harus di pisahkan per vendor. berikut step yang harus dilakukan :
+
+1. user staff, warehouse head dan branch head membuat purchase request, dan data status purchase request tersebut akan berubah sampai approve, lalu admin akan membuat quotation dari purchase request tersebut untuk memastikan apakah purchase request tersebut sudah terpenuhi atau belum dari vendor yang akan di order. jika belum maka admin bisa membuat quotation plan lagi untuk sisa barang yang di mintanya. setelah di quotation plan maka akan di minta approval kembali kepada warehouse head dan branch head tanpa approval manager. apakah setuju untuk lanjut membuat quotation plan dengan stock yang tidak semua bisa di pesan sehingga akan menjadi multi purchase order atau menunggu sampai vendornya bisa menyanggupi semua item quantity yang di perlukan dari purchase request.
+2. Untuk data purchase request yang di tampilkan disesuaikan dengan masing - masing role, jika dia staff maka dia hanya bisa melihat purchase request yang dia buat saja, jika dia warehouse head berarti dia bisa melihat semua purchase request yang di buat oleh staff di warehouse nya, jika dia branch head berarti dia bisa melihat semua purchase request yang di buat oleh staff dan warehouse head di branch nya, jika dia manager berarti dia bisa melihat semua purchase request yang di buat oleh staff, warehouse head dan branch head di branch nya, dan jika dia superadmin berarti dia bisa melihat semua purchase request yang di buat oleh staff, warehouse head, branch head dan manager di semua branch.
+3. buatkan juga history selisih quantitynya antara item yang sudah di jadikan purchase order dan belum, untuk memudahkan admin dalam membuat purchase order lagi.
+4. buatkan otomatisasi juga ketika quotationnya sudah di approve maka quantity yang di pesan di purchase request akan berkurang dan ada history selisih yang sudah di proses dan belumnya.
+5. Buatkan juga history price dari harga barang itemnya dari per quotation yang di buat dan dari masing - masing vendor. karna saya ingin membuat report untuk HPP dari item tersebut. dan harga barang bisa berubah - ubah dari vendornya kadang hari ini 5000 kadang lusa bisa jadi 6000 dan saya ingin itu ter record jelas di report. sepertinya ini perlu membuat table baru untuk price item nya
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-notification-transaction.md
+
+Buatkan issues-notification-transaction.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000, berikut list endpoitnnya terdapat pada directory documentation/api-list.md
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Buatkan perencanaan untuk membuat tampilan notification transaction yang masuk untuk masing - masing role terutama untuk module Purchase Request, Quotation Plan, Purchase Order, Goods Receipt dan Quality Control, agar user mendapatkan notif langsung di aplikasi dan ketika di klik akan mengarahkan ke halaman masing - masing module tersebut sesuai dengan role user nya. Buatkan juga planning detail dan tabel yang di perlukan untuk menyimpan data tersebut, jangan lupa buatkan API endpointnya juga.
+
+Untuk semua data yang masuk ke dalam module masing - masing pastikan sesuai dengan mappingan data usernya. agar tidak tercampur dengan data user lain yang tidak memiliki hak akses untuk melihat data tersebut.
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.
+
+# issues-assembly-product-selling.md
+Buatkan issues-assembly-product-selling.md di folder issues yang berisi perencanaan untuk nanti di implementasikan oleh junior programmer atau AI model yang lebih murah.
+
+Isi dari planningnya adalah sebagai berikut :
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk frontend :
+1. Gunakan style ui dari shadcn ui, tailwindcss dan vite.
+2. Gunakan useQuery, useMutation dari tanstack untuk hooks API
+3. Gunakan API local saya yang running di berikut : http://localhost:3000.
+4. Tambahkan juga reporting Activity Logs untuk melihat kegiatan yang dilakukan oleh user saat menggunakan aplikasi.
+5. Tambahkan pagination, filtering, searching dan order by untuk di tablenya agar lebih rapi
+6. Untuk fitur update dan delete di each role pastikan sesuai dengan role tersebut
+7. Gunakan useContext untuk global state management
+
+Tolong buatkan beberapa perencanaan dibawah ini dengan base sebagai berikut untuk backend :
+1. Pastikan untuk struktur folder itu modular (module, schema, controller, model, service, validation, route, dto)
+2. Gunakan drizzle orm
+3. Pastikan untuk table databasenya di tambahkan indexing jika berelasi dengan table lain.
+4. Pastikan juga untuk performanya agar cepat dan tidak lelet
+5. Untuk naming database, table dan field itu gunakan snake_case.
+6. Pastikan setelah membuat modulenya maka file api-listnya di update pada direktori belajar-vibe-coding/documentation/api-list.md
+
+Buatkan perencanaan untuk module Assembly Order (Perakitan dari bahan mentah menjadi produk jadi) yang dimana dimodule ini itu untuk mencatat total barang hasil perakitan atau packing yang dimana barang yang sudah di packing tersebut akan menjadi produk siap jual / siap packing ke customer atau ke ekspedisi, dan otomatis merestock produk siap jual ini di masing - masing gudang jika sudah di setujui oleh warehouse head. Tolong buatkan dengan validasi yang ketat karna produk siap jual ini akan berada di master data barang, yang dimana dia bertipe Produk dijual maka dari itu dia pasti ada component item detailnya dan pastikan ketika item yang di tuju itu akan di packing akan memunculkan visualisasi gambaran dari masing - masing bahan mentahnya apakah mencukupi atau tidak. Pastikan visualisasi nya itu seperti kartu yang menampilkan gambar, nama, kode, stock awal, stock akhir, stock yang digunakan dan stock yang akan di kembalikan. serta pastikan juga ada tombol untuk konfirmasi. Karna dalam 1 kali proses pencatatan barang bisa multi produk dan produk tersebut berasal dari bahan mentah yang sama pastikan stock bahan mentahnya tidak anomali. Misalkan bahan mentah A terdapat 100 Stock, Produk A membutuhkan 80 bahan mentah A dan Produk B membutuhkan 40 bahan mentah A, maka muncul notifikasi karna bahan mentah yang di butuhkan itu kurang. atau ketika user ingin menginput Produk B di berikan validasi hanya bisa membuat 20 saja karna sisa dari bahan mentahnya hanya 20 (100 stock - 80 yang sudah dipakai di produk A). Dan untuk biaya produksi atau HPP nya juga dari master data, tinggal di jumlahkan saja dari harga purchase di kalikan qty yang dibutuhkan dan di jumlahkan dengan bahan mentah lain.
+
+Buatkan flowchart (Mermaid), use case (Mermaid), sequence diagram (Mermaid) dan ERD nya di issue serta implementation plannya.  
+
+Buatkan Workflow terlebih dahulu agar saya bisa review dan approve untuk implementasi planning di atas.

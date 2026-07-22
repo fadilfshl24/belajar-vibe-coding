@@ -1,12 +1,12 @@
-import { and, asc, count, desc, eq, ilike, isNull, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, inArray, ne, or } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import {
   purchaseOrders,
   purchaseOrderDetails,
   purchaseOrderRequests,
-  purchaseOrderApprovals,
 } from "./purchase-order.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { purchaseRequests } from "../purchase-request/purchase-request.schema";
 import { toPurchaseOrderDTO, type PurchaseOrderDTO } from "./purchase-order.dto";
 import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
@@ -37,12 +37,34 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; status?: number; warehouseId?: string; vendorId?: string }) {
-  const { searchTerm, status, warehouseId, vendorId } = params;
+function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number }) {
+  const { searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage } = params;
   let conds = isNull(purchaseOrders.deletedAt);
   if (status !== undefined) conds = and(conds, eq(purchaseOrders.status, status))!;
   if (warehouseId) conds = and(conds, eq(purchaseOrders.warehouseId, warehouseId))!;
   if (vendorId) conds = and(conds, eq(purchaseOrders.vendorId, vendorId))!;
+  if (visibleWarehouseIds !== undefined) {
+    if (visibleWarehouseIds.length === 0) {
+      // If array is empty, user is mapped to 0 warehouses => they shouldn't see anything.
+      conds = and(conds, eq(purchaseOrders.warehouseId, "00000000-0000-0000-0000-000000000000"))!;
+    } else {
+      conds = and(conds, inArray(purchaseOrders.warehouseId, visibleWarehouseIds))!;
+    }
+    // Only superadmin and admin (visibleWarehouseIds === undefined) can see drafts.
+    // Others can only see POs that are no longer drafts (status != 0).
+    conds = and(conds, ne(purchaseOrders.status, 0))!;
+  }
+  // Dynamic approval stage filter:
+  // Only show pending POs (status=1) at the user's required stage.
+  // Non-pending POs are always visible.
+  if (requiredApprovalStage !== undefined) {
+    const isPendingAtStage = and(
+      eq(purchaseOrders.status, 1),
+      eq(purchaseOrders.currentApprovalStage, requiredApprovalStage)
+    );
+    const isNotPending = ne(purchaseOrders.status, 1);
+    conds = and(conds, or(isPendingAtStage, isNotPending))!;
+  }
   if (searchTerm && searchTerm.trim() !== "") {
     conds = and(conds, ilike(purchaseOrders.code, `%${searchTerm.trim()}%`))!;
   }
@@ -75,10 +97,12 @@ export class PurchaseOrderModel {
     status?: number;
     warehouseId?: string;
     vendorId?: string;
+    visibleWarehouseIds?: string[];
+    requiredApprovalStage?: number;
   }): Promise<PurchaseOrderDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, vendorId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, vendorId });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseOrders.findMany({
@@ -89,6 +113,7 @@ export class PurchaseOrderModel {
       with: {
         vendor: true,
         warehouse: true,
+        quotationPlan: true,
         purchaseRequests: {
           with: { purchaseRequest: true },
         },
@@ -98,7 +123,7 @@ export class PurchaseOrderModel {
     return result.map(toPurchaseOrderDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; vendorId?: string }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseOrders).where(whereClause);
     return result[0]?.total ?? 0;
@@ -110,7 +135,6 @@ export class PurchaseOrderModel {
       with: {
         vendor: true,
         warehouse: true,
-        purchaseRequest: true,
         purchaseRequests: {
           with: {
             purchaseRequest: {
@@ -120,11 +144,18 @@ export class PurchaseOrderModel {
         },
         details: {
           where: isNull(purchaseOrderDetails.deletedAt),
-          with: { item: true },
+          with: { 
+            item: true,
+            quotationPlanDetail: {
+              with: {
+                quotationPlan: true
+              }
+            }
+          },
         },
         approvals: {
           with: { approver: true },
-          orderBy: asc(purchaseOrderApprovals.stage),
+          orderBy: asc(documentApprovals.stage),
         },
       },
     });
@@ -238,7 +269,7 @@ export class PurchaseOrderModel {
       description?: string | null;
       termsConditions?: string | null;
       termOfPayment?: string | null;
-      details?: { itemId: string; quantity: number; price: number; purchaseRequestDetailId?: string | null; remark?: string | null; attachmentUrl?: string | null }[];
+      details?: { itemId: string; quantity: number; price: number; purchaseRequestDetailId?: string | null; quotationPlanDetailId?: string | null; remark?: string | null; attachmentUrl?: string | null }[];
     },
     userId?: string
   ): Promise<PurchaseOrderDTO | undefined> {
@@ -303,6 +334,7 @@ export class PurchaseOrderModel {
             purchaseOrderId: id,
             itemId: d.itemId,
             purchaseRequestDetailId: d.purchaseRequestDetailId ?? null,
+            quotationPlanDetailId: d.quotationPlanDetailId ?? null,
             quantity: d.quantity,
             receivedQuantity: 0,
             price: d.price.toString(),
@@ -347,10 +379,10 @@ export class PurchaseOrderModel {
       if (!po) throw new Error("Purchase order not found");
       if (po.status !== 0) throw new Error("Hanya PO berstatus Draft yang dapat di-submit.");
 
-      await tx.insert(purchaseOrderApprovals).values([
-        { purchaseOrderId: id, stage: 0, status: 0, createdBy: userId, updatedBy: userId },
-        { purchaseOrderId: id, stage: 1, status: 0, createdBy: userId, updatedBy: userId },
-        { purchaseOrderId: id, stage: 2, status: 0, createdBy: userId, updatedBy: userId },
+      await tx.insert(documentApprovals).values([
+        { documentType: "PO", documentId: id, stage: 0, status: 0, createdBy: userId, updatedBy: userId },
+        { documentType: "PO", documentId: id, stage: 1, status: 0, createdBy: userId, updatedBy: userId },
+        { documentType: "PO", documentId: id, stage: 2, status: 0, createdBy: userId, updatedBy: userId },
       ]);
 
       await tx.update(purchaseOrders)
@@ -403,9 +435,13 @@ export class PurchaseOrderModel {
         if (stage === 2 && isManager) canReject = true;
         if (!canReject) throw new Error("Anda tidak memiliki akses untuk menolak PO pada tahap ini.");
 
-        await tx.update(purchaseOrderApprovals)
+        await tx.update(documentApprovals)
           .set({ status: 2, approvedBy: userId, approvedAt: new Date(), remark: payload.remark ?? null, updatedAt: new Date(), updatedBy: userId })
-          .where(and(eq(purchaseOrderApprovals.purchaseOrderId, id), eq(purchaseOrderApprovals.stage, stage)));
+          .where(and(
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.stage, stage)
+          ));
 
         await tx.update(purchaseOrders)
           .set({ status: 3, updatedAt: new Date(), updatedBy: userId })
@@ -417,17 +453,22 @@ export class PurchaseOrderModel {
         if (stage === 2 && isManager) canApprove = true;
         if (!canApprove) throw new Error("Anda tidak memiliki akses untuk menyetujui PO pada tahap ini.");
 
-        await tx.update(purchaseOrderApprovals)
+        await tx.update(documentApprovals)
           .set({ status: 1, approvedBy: userId, approvedAt: new Date(), remark: payload.remark ?? null, updatedAt: new Date(), updatedBy: userId })
-          .where(and(eq(purchaseOrderApprovals.purchaseOrderId, id), eq(purchaseOrderApprovals.stage, stage)));
+          .where(and(
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.stage, stage)
+          ));
 
-        const nextPending = await tx.query.purchaseOrderApprovals.findFirst({
+        const nextPending = await tx.query.documentApprovals.findFirst({
           where: and(
-            eq(purchaseOrderApprovals.purchaseOrderId, id),
-            eq(purchaseOrderApprovals.status, 0),
-            isNull(purchaseOrderApprovals.deletedAt)
+            eq(documentApprovals.documentType, "PO"),
+            eq(documentApprovals.documentId, id),
+            eq(documentApprovals.status, 0),
+            isNull(documentApprovals.deletedAt)
           ),
-          orderBy: asc(purchaseOrderApprovals.stage),
+          orderBy: asc(documentApprovals.stage),
         });
 
         if (nextPending) {

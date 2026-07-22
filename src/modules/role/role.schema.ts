@@ -2,6 +2,7 @@ import { pgTable, uuid, varchar, text, boolean, index, uniqueIndex } from "drizz
 import { auditColumns } from "../../core/db/audit";
 import { users } from "../user/user.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
+import { sql } from "drizzle-orm";
 
 /**
  * Tabel: roles
@@ -13,12 +14,13 @@ export const roles = pgTable(
   "roles",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
+    code: varchar("code", { length: 50 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     ...auditColumns,
   },
   (t) => [
+    uniqueIndex("idx_roles_code_active").on(t.code).where(sql`deleted_at IS NULL`),
     index("idx_roles_code").on(t.code),
     index("idx_roles_name").on(t.name),
     index("idx_roles_deleted_at").on(t.deletedAt),

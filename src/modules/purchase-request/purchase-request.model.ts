@@ -1,7 +1,8 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
-import { purchaseRequests, purchaseRequestDetails, purchaseRequestApprovals } from "./purchase-request.schema";
+import { purchaseRequests, purchaseRequestDetails } from "./purchase-request.schema";
+import { documentApprovals } from "../approval/document-approval.schema";
 import { toPurchaseRequestDTO, type PurchaseRequestDTO } from "./purchase-request.dto";
 import type { PurchaseRequestRecord } from "./purchase-request.schema";
 import { roles, userWarehouseRoles, userWarehouseMappings } from "../role/role.schema";
@@ -44,8 +45,9 @@ function buildFilterCondition(params: {
   requestedByUserId?: string;
   visibleWarehouseIds?: string[];
   currentUserId?: string;
+  requiredApprovalStage?: number; // when set, filter pending PRs to only this stage
 }) {
-  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
+  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
   let conds = isNull(purchaseRequests.deletedAt);
   if (status !== undefined) {
     conds = and(conds, eq(purchaseRequests.status, status))!;
@@ -64,7 +66,22 @@ function buildFilterCondition(params: {
   if (visibleWarehouseIds && visibleWarehouseIds.length > 0) {
     conds = and(conds, inArray(purchaseRequests.warehouseId, visibleWarehouseIds))!;
   }
-  
+
+  // ── Approval Stage Filter ──────────────────────────────────────────────────
+  // When requiredApprovalStage is set, only show PRs that are either:
+  //  a) status=Pending(1) AND currentApprovalStage == requiredApprovalStage, OR
+  //  b) status != Pending (already resolved: approved/rejected/completed/etc.)
+  // This prevents e.g. branch_head from seeing PRs still waiting for WH Head.
+  if (requiredApprovalStage !== undefined) {
+    const isPendingAtCorrectStage = and(
+      eq(purchaseRequests.status, 1),
+      eq(purchaseRequests.currentApprovalStage, requiredApprovalStage)
+    );
+    const isNotPending = ne(purchaseRequests.status, 1);
+    conds = and(conds, or(isPendingAtCorrectStage, isNotPending))!;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   // Custom logic: Cancelled PRs (status = 4) are only visible to the user who created them
   if (currentUserId) {
     // Show PR if: status is NOT 4, OR (status IS 4 AND requestedBy IS currentUserId)
@@ -119,10 +136,11 @@ export class PurchaseRequestModel {
     requestedByUserId?: string;
     visibleWarehouseIds?: string[];
     currentUserId?: string;
+    requiredApprovalStage?: number;
   }): Promise<PurchaseRequestDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseRequests.findMany({
@@ -156,7 +174,7 @@ export class PurchaseRequestModel {
     return result.map(toPurchaseRequestDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string; requiredApprovalStage?: number }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause as any);
     return result[0]?.total ?? 0;
@@ -197,11 +215,7 @@ export class PurchaseRequestModel {
     description?: string;
     details: { itemId: string; quantity: number; price: number; remark?: string | null; attachmentUrl?: string | null }[];
   }, userId: string): Promise<PurchaseRequestDTO | undefined> {
-    // Validate approvers
-    const approvers = await this.getApprovers(payload.warehouseId);
-    if (!approvers.warehouseHeads.length || !approvers.branchHeads.length) {
-      throw new Error("Gudang tujuan belum memiliki Kepala Gudang atau Kepala Cabang untuk proses persetujuan.");
-    }
+    // Validate approvers - removed as we are using dynamic approval steps now
 
     const result = await db.transaction(async (tx) => {
       const code = await generatePRCode();
@@ -350,7 +364,7 @@ export class PurchaseRequestModel {
     // 4. Upsert inventory_stocks for each item
     for (const detail of prDetails) {
       const existing = await tx
-        .select({ id: inventoryStocks.id, quantity: inventoryStocks.quantity })
+        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
         .from(inventoryStocks)
         .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
 
@@ -359,17 +373,20 @@ export class PurchaseRequestModel {
         await tx.insert(inventoryStocks).values({
           warehouseId,
           itemId: detail.itemId,
-          quantity: detail.quantity.toString(),
+          physicalQty: detail.quantity.toString(),
+          availableQty: detail.quantity.toString(),
+          reservedQty: "0.00",
           createdBy: userId,
           updatedBy: userId,
         });
       } else {
         // Update existing stock quantity
         const existingStock = existing[0]!;
-        const newQty = Number(existingStock.quantity) + Number(detail.quantity);
+        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
+        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
         await tx
           .update(inventoryStocks)
-          .set({ quantity: newQty.toString(), updatedAt: new Date(), updatedBy: userId })
+          .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
           .where(eq(inventoryStocks.id, existingStock.id));
       }
     }
@@ -431,8 +448,9 @@ export class PurchaseRequestModel {
           updatePayload.approvedAt = new Date();
 
           // Insert 1 row representing Manager approval
-          await tx.insert(purchaseRequestApprovals).values({
-            purchaseRequestId: id,
+          await tx.insert(documentApprovals).values({
+            documentType: "PR",
+            documentId: id,
             stage: 2, // Manager
             status: 1, // Approved
             approvedBy: pr.requestedBy,
@@ -458,13 +476,14 @@ export class PurchaseRequestModel {
 
           // Insert pending approvals
           const approvalValues = stagesToInsert.map(stage => ({
-            purchaseRequestId: id,
+            documentType: "PR",
+            documentId: id,
             stage,
             status: 0, // Pending
             createdBy: userId,
             updatedBy: userId,
           }));
-          await tx.insert(purchaseRequestApprovals).values(approvalValues);
+          await tx.insert(documentApprovals).values(approvalValues);
         }
       } 
       // 2. Approving or Rejecting when Pending (1)
@@ -480,7 +499,7 @@ export class PurchaseRequestModel {
 
           // Update active stage approval record to Rejected (2)
           await tx
-            .update(purchaseRequestApprovals)
+            .update(documentApprovals)
             .set({
               status: 2, // Rejected
               approvedBy: userId,
@@ -491,8 +510,9 @@ export class PurchaseRequestModel {
             })
             .where(
               and(
-                eq(purchaseRequestApprovals.purchaseRequestId, id),
-                eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+                eq(documentApprovals.documentType, "PR"),
+                eq(documentApprovals.documentId, id),
+                eq(documentApprovals.stage, pr.currentApprovalStage)
               )
             );
 
@@ -510,7 +530,7 @@ export class PurchaseRequestModel {
 
             // Set all pending approval steps to Approved
             await tx
-              .update(purchaseRequestApprovals)
+              .update(documentApprovals)
               .set({
                 status: 1, // Approved
                 approvedBy: userId,
@@ -521,8 +541,9 @@ export class PurchaseRequestModel {
               })
               .where(
                 and(
-                  eq(purchaseRequestApprovals.purchaseRequestId, id),
-                  eq(purchaseRequestApprovals.status, 0)
+                  eq(documentApprovals.documentType, "PR"),
+                  eq(documentApprovals.documentId, id),
+                  eq(documentApprovals.status, 0)
                 )
               );
 
@@ -542,7 +563,7 @@ export class PurchaseRequestModel {
 
             // Update the current approval step to Approved
             await tx
-              .update(purchaseRequestApprovals)
+              .update(documentApprovals)
               .set({
                 status: 1, // Approved
                 approvedBy: userId,
@@ -553,19 +574,21 @@ export class PurchaseRequestModel {
               })
               .where(
                 and(
-                  eq(purchaseRequestApprovals.purchaseRequestId, id),
-                  eq(purchaseRequestApprovals.stage, pr.currentApprovalStage)
+                  eq(documentApprovals.documentType, "PR"),
+                  eq(documentApprovals.documentId, id),
+                  eq(documentApprovals.stage, pr.currentApprovalStage)
                 )
               );
 
             // Determine if there are more pending stages
-            const nextPending = await tx.query.purchaseRequestApprovals.findFirst({
+            const nextPending = await tx.query.documentApprovals.findFirst({
               where: and(
-                eq(purchaseRequestApprovals.purchaseRequestId, id),
-                eq(purchaseRequestApprovals.status, 0), // Pending
-                isNull(purchaseRequestApprovals.deletedAt)
+                eq(documentApprovals.documentType, "PR"),
+                eq(documentApprovals.documentId, id),
+                eq(documentApprovals.status, 0), // Pending
+                isNull(documentApprovals.deletedAt)
               ),
-              orderBy: asc(purchaseRequestApprovals.stage),
+              orderBy: asc(documentApprovals.stage),
             });
 
             if (nextPending) {
@@ -614,60 +637,5 @@ export class PurchaseRequestModel {
     return result.length > 0;
   }
 
-  static async getApprovers(warehouseId: string) {
-    const specificRolesData = await db
-      .select({
-        userId: users.id,
-        userName: users.name,
-        userEmail: users.email,
-        roleCode: roles.code
-      })
-      .from(userWarehouseRoles)
-      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
-      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
-      .where(
-        and(
-          isNull(userWarehouseRoles.deletedAt),
-          isNull(users.deletedAt)
-        )
-      );
-    
-    // Filter in memory for simplicity
-    const managers = specificRolesData.filter(r => r.roleCode === "manager");
-    
-    const warehouseData = await db
-      .select({
-        userId: users.id,
-        userName: users.name,
-        userEmail: users.email,
-        roleCode: roles.code
-      })
-      .from(userWarehouseRoles)
-      .innerJoin(users, eq(userWarehouseRoles.userId, users.id))
-      .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
-      .innerJoin(userWarehouseMappings, eq(userWarehouseMappings.userId, users.id))
-      .where(
-        and(
-          eq(userWarehouseMappings.warehouseId, warehouseId),
-          eq(userWarehouseMappings.isActive, true),
-          isNull(userWarehouseMappings.deletedAt),
-          isNull(userWarehouseRoles.deletedAt),
-          isNull(users.deletedAt)
-        )
-      );
 
-    const warehouseHeads = warehouseData.filter(r => r.roleCode === "warehouse_head");
-    const branchHeads = warehouseData.filter(r => r.roleCode === "branch_head");
-
-    // Remove duplicates
-    const uniqueManagers = Array.from(new Map(managers.map(item => [item.userId, item])).values());
-    const uniqueWHHeads = Array.from(new Map(warehouseHeads.map(item => [item.userId, item])).values());
-    const uniqueBranchHeads = Array.from(new Map(branchHeads.map(item => [item.userId, item])).values());
-
-    return {
-      warehouseHeads: uniqueWHHeads,
-      branchHeads: uniqueBranchHeads,
-      managers: uniqueManagers
-    };
-  }
 }

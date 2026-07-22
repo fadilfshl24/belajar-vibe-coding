@@ -19,13 +19,16 @@ export const inventoryStocks = pgTable(
     itemId: uuid("item_id")
       .notNull()
       .references(() => items.id),
-    quantity: decimal("quantity", { precision: 15, scale: 2 }).notNull().default("0.00"),
+    physicalQty: decimal("physical_qty", { precision: 15, scale: 2 }).notNull().default("0.00"),
+    reservedQty: decimal("reserved_qty", { precision: 15, scale: 2 }).notNull().default("0.00"),
+    availableQty: decimal("available_qty", { precision: 15, scale: 2 }).notNull().default("0.00"),
     ...auditColumns,
   },
   (t) => [
     uniqueIndex("unq_inventory_stocks_wh_item").on(t.warehouseId, t.itemId),
     index("idx_inventory_stocks_warehouse_id").on(t.warehouseId),
     index("idx_inventory_stocks_item_id").on(t.itemId),
+    index("idx_inventory_stocks_available_qty").on(t.availableQty),
   ]
 );
 

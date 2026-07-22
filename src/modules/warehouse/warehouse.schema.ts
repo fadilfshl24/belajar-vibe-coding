@@ -1,6 +1,7 @@
-import { pgTable, uuid, varchar, text, decimal, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, decimal, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 import { users } from "../user/user.schema";
+import { sql } from "drizzle-orm";
 
 /**
  * Tabel: warehouses
@@ -12,7 +13,7 @@ export const warehouses = pgTable(
   "warehouses",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    code: varchar("code", { length: 100 }).notNull().unique(),
+    code: varchar("code", { length: 100 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     address: text("address"),
@@ -27,6 +28,7 @@ export const warehouses = pgTable(
     ...auditColumns,
   },
   (t) => [
+    uniqueIndex("idx_warehouses_code_active").on(t.code).where(sql`deleted_at IS NULL`),
     index("idx_warehouses_code").on(t.code),
     index("idx_warehouses_is_active").on(t.isActive),
     index("idx_warehouses_deleted_at").on(t.deletedAt),

@@ -7,10 +7,13 @@ import {
   decimal,
   pgEnum,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { auditColumns } from "../../core/db/audit";
 import { uoms } from "../uom/uom.schema";
 import { itemCategories } from "../category/category.schema";
+import { vendors } from "../vendor/vendor.schema";
+import { sql } from "drizzle-orm";
 
 /**
  * Enum: item_type
@@ -33,7 +36,7 @@ export const items = pgTable(
   "items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    code: varchar("code", { length: 100 }).notNull().unique(),
+    code: varchar("code", { length: 100 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     description: text("description"),
     uomId: uuid("uom_id")
@@ -42,7 +45,7 @@ export const items = pgTable(
     categoryId: uuid("category_id")
       .notNull()
       .references(() => itemCategories.id),
-    barcodeText: varchar("barcode_text", { length: 150 }).unique(),
+    barcodeText: varchar("barcode_text", { length: 150 }),
     barcodeType: varchar("barcode_type", { length: 50 }),  // EAN-13, CODE-128, QR, dll.
     imageUrl: text("image_url"),
     itemType: itemTypeEnum("item_type").notNull().default("single"),
@@ -59,6 +62,8 @@ export const items = pgTable(
     ...auditColumns,
   },
   (t) => [
+    uniqueIndex("idx_items_code_active").on(t.code).where(sql`deleted_at IS NULL`),
+    uniqueIndex("idx_items_barcode_text_active").on(t.barcodeText).where(sql`deleted_at IS NULL`),
     index("idx_items_code").on(t.code),
     index("idx_items_uom_id").on(t.uomId),
     index("idx_items_category_id").on(t.categoryId),
@@ -107,6 +112,26 @@ export type ItemRecord = typeof items.$inferSelect;
 export type ItemInsert = typeof items.$inferInsert;
 export type ItemPackageDetailRecord = typeof itemPackageDetails.$inferSelect;
 export type ItemPackageDetailInsert = typeof itemPackageDetails.$inferInsert;
+
+export const itemPriceHistories = pgTable(
+  "item_price_histories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    itemId: uuid("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+    vendorId: uuid("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+    price: decimal("price", { precision: 18, scale: 2 }).notNull(),
+    sourceType: varchar("source_type", { length: 50 }).notNull(), // 'QUOTATION', 'PO', 'MANUAL'
+    sourceId: uuid("source_id"), // quotation_plan_details.id etc
+    effectiveDate: text("effective_date").notNull(), // using date string YYYY-MM-DD or timestamp
+    ...auditColumns,
+  },
+  (t) => [
+    index("idx_item_price_item_id").on(t.itemId),
+    index("idx_item_price_vendor_id").on(t.vendorId),
+  ]
+);
+
+export type ItemPriceHistoryRecord = typeof itemPriceHistories.$inferSelect;
 
 import { relations } from "drizzle-orm";
 

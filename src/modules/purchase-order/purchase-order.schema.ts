@@ -12,15 +12,15 @@ export const purchaseOrders = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     code: varchar("code", { length: 100 }).notNull().unique(),
-    purchaseRequestId: uuid("purchase_request_id").references(() => purchaseRequests.id),
+    quotationPlanId: uuid("quotation_plan_id"),
     vendorId: uuid("vendor_id").notNull().references(() => vendors.id),
     warehouseId: uuid("warehouse_id").notNull().references(() => warehouses.id),
     orderDate: date("order_date").notNull(),
     expectedDeliveryDate: date("expected_delivery_date"),
-    status: integer("status").notNull().default(0), // 0=Draft, 1=Pending Approval, 2=Approved, 3=Rejected, 4=Sent, 5=Partial Received, 6=Fully Received, 7=Cancelled
-    currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER, 3=DONE
+    status: integer("status").notNull().default(0), // 0 = Draft, 1 = Pending Approval, 2 = Approved, 3 = Rejected, 4 = Sent, 5 = Partial Received, 6 = Fully Received, 7 = Cancelled
+    currentApprovalStage: integer("current_approval_stage").notNull().default(0), // 0 = WH_HEAD, 1 = BRANCH_HEAD, 2 = MANAGER, 3 = DONE
     approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
     totalPrice: decimal("total_price", { precision: 18, scale: 2 }).notNull().default("0"),
     tax: decimal("tax", { precision: 18, scale: 2 }).notNull().default("0"),
     discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }).notNull().default("0"),
@@ -48,6 +48,7 @@ export const purchaseOrderDetails = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
     purchaseRequestDetailId: uuid("purchase_request_detail_id"), // traceability to source PR detail
+    quotationPlanDetailId: uuid("quotation_plan_detail_id"), // traceability to source QP detail
     itemId: uuid("item_id").notNull().references(() => items.id),
     quantity: integer("quantity").notNull(),
     receivedQuantity: integer("received_quantity").notNull().default(0),
@@ -80,30 +81,12 @@ export const purchaseOrderRequests = pgTable(
   ]
 );
 
-// Approval trail for PO: WH Head → Branch Head → Manager
-export const purchaseOrderApprovals = pgTable(
-  "purchase_order_approvals",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
-    stage: integer("stage").notNull(), // 0=WH_HEAD, 1=BRANCH_HEAD, 2=MANAGER
-    status: integer("status").notNull().default(0), // 0=Pending, 1=Approved, 2=Rejected
-    approvedBy: uuid("approved_by").references(() => users.id),
-    approvedAt: timestamp("approved_at"),
-    remark: text("remark"),
-    ...auditColumns,
-  },
-  (t) => [
-    index("idx_poa_po_id").on(t.purchaseOrderId),
-    index("idx_poa_stage").on(t.stage),
-    index("idx_poa_status").on(t.status),
-  ]
-);
+import { documentApprovals } from "../approval/document-approval.schema";
 
 export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
-  purchaseRequest: one(purchaseRequests, {
-    fields: [purchaseOrders.purchaseRequestId],
-    references: [purchaseRequests.id],
+  quotationPlan: one(require("../quotation-plan/quotation-plan.schema").quotationPlans, {
+    fields: [purchaseOrders.quotationPlanId],
+    references: [require("../quotation-plan/quotation-plan.schema").quotationPlans.id],
   }),
   vendor: one(vendors, {
     fields: [purchaseOrders.vendorId],
@@ -119,13 +102,19 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many })
   }),
   details: many(purchaseOrderDetails),
   purchaseRequests: many(purchaseOrderRequests),
-  approvals: many(purchaseOrderApprovals),
+  approvals: many(documentApprovals, {
+    relationName: "purchaseOrderApprovals",
+  }),
 }));
 
 export const purchaseOrderDetailsRelations = relations(purchaseOrderDetails, ({ one }) => ({
   purchaseOrder: one(purchaseOrders, {
     fields: [purchaseOrderDetails.purchaseOrderId],
     references: [purchaseOrders.id],
+  }),
+  quotationPlanDetail: one(require("../quotation-plan/quotation-plan.schema").quotationPlanDetails, {
+    fields: [purchaseOrderDetails.quotationPlanDetailId],
+    references: [require("../quotation-plan/quotation-plan.schema").quotationPlanDetails.id],
   }),
   item: one(items, {
     fields: [purchaseOrderDetails.itemId],
@@ -144,20 +133,9 @@ export const purchaseOrderRequestsRelations = relations(purchaseOrderRequests, (
   }),
 }));
 
-export const purchaseOrderApprovalsRelations = relations(purchaseOrderApprovals, ({ one }) => ({
-  purchaseOrder: one(purchaseOrders, {
-    fields: [purchaseOrderApprovals.purchaseOrderId],
-    references: [purchaseOrders.id],
-  }),
-  approver: one(users, {
-    fields: [purchaseOrderApprovals.approvedBy],
-    references: [users.id],
-  }),
-}));
-
 export type PurchaseOrderRecord = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderInsert = typeof purchaseOrders.$inferInsert;
 export type PurchaseOrderDetailRecord = typeof purchaseOrderDetails.$inferSelect;
 export type PurchaseOrderDetailInsert = typeof purchaseOrderDetails.$inferInsert;
 export type PurchaseOrderRequestRecord = typeof purchaseOrderRequests.$inferSelect;
-export type PurchaseOrderApprovalRecord = typeof purchaseOrderApprovals.$inferSelect;
+

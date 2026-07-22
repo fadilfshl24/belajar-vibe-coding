@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or, inArray } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { items, itemPackageDetails } from "./item.schema";
-import { toItemDTO, type ItemDTO } from "./item.dto";
+import { toItemDTO, type ItemDTO, type DetailWithChildItem } from "./item.dto";
 import type { ItemRecord, ItemPackageDetailRecord } from "./item.schema";
 import type { CreateItemInput, UpdateItemInput } from "./item.validation";
 import { uoms } from "../uom/uom.schema";
@@ -168,10 +168,22 @@ export class ItemModel {
     if (result.length === 0) return undefined;
     const row = result[0]!;
     if (row.item.itemType === "package") {
-      const details = await db
-        .select()
+      const detailsRaw = await db
+        .select({
+          detail: itemPackageDetails,
+          childItemCode: items.code,
+          childItemName: items.name,
+        })
         .from(itemPackageDetails)
+        .leftJoin(items, eq(itemPackageDetails.childItemId, items.id))
         .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
+
+      const details = detailsRaw.map(d => ({
+        ...d.detail,
+        childItemCode: d.childItemCode ?? undefined,
+        childItemName: d.childItemName ?? undefined,
+      }));
+
       return toItemDTO(row.item, details, row.category, row.uom);
     }
 
@@ -225,39 +237,53 @@ export class ItemModel {
 
       if (!insertedItem) throw new Error("Failed to create item");
 
-      const detailRecords: ItemPackageDetailRecord[] = [];
+      const detailRecords: DetailWithChildItem[] = [];
 
-      if (payload.itemType === "package" && payload.details) {
-        for (const detail of payload.details) {
-          const child = await tx
-            .select()
-            .from(items)
-            .where(and(eq(items.id, detail.childItemId), isNull(items.deletedAt)))
-            .limit(1);
-          const childItem = child[0];
+      if (payload.itemType === "package" && payload.details && payload.details.length > 0) {
+        const childItemIds = payload.details.map(d => d.childItemId);
+        const childItems = await tx
+          .select()
+          .from(items)
+          .where(and(inArray(items.id, childItemIds), isNull(items.deletedAt)));
+
+        const childItemsMap = new Map(childItems.map(item => [item.id, item]));
+
+        const insertValues = payload.details.map(detail => {
+          const childItem = childItemsMap.get(detail.childItemId);
           if (!childItem) {
             throw new Error(`Child item ID ${detail.childItemId} not found`);
           }
           if (childItem.itemType !== "single") {
             throw new Error(`Child item ID ${detail.childItemId} must be type 'single'`);
           }
+
           const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage ?? 0);
-          const [insertedDetail] = await tx
+          return {
+            packageItemId: insertedItem.id,
+            childItemId: detail.childItemId,
+            quantity: String(detail.quantity),
+            price: String(detail.price),
+            discountPercentage: String(detail.discountPercentage ?? 0),
+            discountPrice: String(dDiscPrice),
+            priceAfterDiscount: String(dPriceAfter),
+            isActive: true,
+            createdBy: userId,
+            updatedBy: userId,
+          };
+        });
+
+        if (insertValues.length > 0) {
+          const insertedDetails = await tx
             .insert(itemPackageDetails)
-            .values({
-              packageItemId: insertedItem.id,
-              childItemId: detail.childItemId,
-              quantity: String(detail.quantity),
-              price: String(detail.price),
-              discountPercentage: String(detail.discountPercentage ?? 0),
-              discountPrice: String(dDiscPrice),
-              priceAfterDiscount: String(dPriceAfter),
-              isActive: true,
-              createdBy: userId,
-              updatedBy: userId,
-            })
+            .values(insertValues)
             .returning();
-          if (insertedDetail) detailRecords.push(insertedDetail);
+          if (insertedDetails) {
+            detailRecords.push({
+              ...insertedDetails,
+              childItemCode: childItems.code,
+              childItemName: childItems.name,
+            });
+          }
         }
       }
 
@@ -346,23 +372,27 @@ export class ItemModel {
         await tx.delete(itemPackageDetails).where(eq(itemPackageDetails.packageItemId, id));
 
         const detailRecords: ItemPackageDetailRecord[] = [];
-        for (const detail of payload.details) {
-          const child = await tx
+
+        if (payload.details.length > 0) {
+          const childItemIds = payload.details.map(d => d.childItemId);
+          const childItems = await tx
             .select()
             .from(items)
-            .where(and(eq(items.id, detail.childItemId), isNull(items.deletedAt)))
-            .limit(1);
-          const childItem = child[0];
-          if (!childItem) {
-            throw new Error(`Child item ID ${detail.childItemId} not found`);
-          }
-          if (childItem.itemType !== "single") {
-            throw new Error(`Child item ID ${detail.childItemId} must be type 'single'`);
-          }
-          const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage ?? 0);
-          const [insertedDetail] = await tx
-            .insert(itemPackageDetails)
-            .values({
+            .where(and(inArray(items.id, childItemIds), isNull(items.deletedAt)));
+
+          const childItemsMap = new Map(childItems.map(item => [item.id, item]));
+
+          const insertValues = payload.details.map(detail => {
+            const childItem = childItemsMap.get(detail.childItemId);
+            if (!childItem) {
+              throw new Error(`Child item ID ${detail.childItemId} not found`);
+            }
+            if (childItem.itemType !== "single") {
+              throw new Error(`Child item ID ${detail.childItemId} must be type 'single'`);
+            }
+
+            const { discountPrice: dDiscPrice, priceAfterDiscount: dPriceAfter } = calcDiscount(detail.price, detail.discountPercentage ?? 0);
+            return {
               packageItemId: updatedItem.id,
               childItemId: detail.childItemId,
               quantity: String(detail.quantity),
@@ -373,16 +403,42 @@ export class ItemModel {
               isActive: true,
               createdBy: userId,
               updatedBy: userId,
-            })
-            .returning();
-          if (insertedDetail) detailRecords.push(insertedDetail);
+            };
+          });
+
+          if (insertValues.length > 0) {
+            const insertedDetails = await tx
+              .insert(itemPackageDetails)
+              .values(insertValues)
+              .returning();
+
+            for (const d of insertedDetails) {
+              const childItem = childItemsMap.get(d.childItemId);
+              detailRecords.push({
+                ...d,
+                childItemCode: childItem?.code,
+                childItemName: childItem?.name,
+              });
+            }
+          }
         }
         return toItemDTO(updatedItem, detailRecords, category[0] || null, uom[0] || null);
       } else if (itemType === "package") {
-        const details = await tx
-          .select()
+        const detailsRaw = await tx
+          .select({
+            detail: itemPackageDetails,
+            childItemCode: items.code,
+            childItemName: items.name,
+          })
           .from(itemPackageDetails)
+          .leftJoin(items, eq(itemPackageDetails.childItemId, items.id))
           .where(and(eq(itemPackageDetails.packageItemId, id), isNull(itemPackageDetails.deletedAt)));
+
+        const details = detailsRaw.map(d => ({
+          ...d.detail,
+          childItemCode: d.childItemCode ?? undefined,
+          childItemName: d.childItemName ?? undefined,
+        }));
         return toItemDTO(updatedItem, details, category[0] || null, uom[0] || null);
       }
 
