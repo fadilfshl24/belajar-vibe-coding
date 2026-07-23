@@ -1004,3 +1004,72 @@ Modul ini digunakan untuk mengelola perakitan barang (Assembly Order) dari bahan
 * **Auth Required**: Yes
   *(Membatalkan booking stok bahan baku dan mengembalikan `available_qty` seperti semula).*
 
+---
+
+## 28. Stock Order Scan & Return API
+
+Modul ini digunakan untuk proses Scan Barcode Outbound Packing dan Inbound Return resi pengiriman.
+
+#### 1. Scan Outbound Resi
+
+* **Method**: `GET`
+* **Path**: `/stock-orders/scan/outbound/:trackingId`
+* **Auth Required**: Yes
+* **Description**: Scan resi untuk packing. Backend memvalidasi status (`UNPACKED`) dan gudang user (dari JWT). Mengembalikan detail order dan platform items beserta sisa stok ready (`availableQty`).
+
+#### 2. Pack Order with Mapping
+
+* **Method**: `POST`
+* **Path**: `/stock-orders/:id/pack-with-mapping`
+* **Auth Required**: Yes
+* **Request Payload**:
+  ```json
+  {
+    "remark": "Catatan packing (opsional)",
+    "mappedItems": [
+      {
+        "itemId": "uuid-item-fisik-1",
+        "quantity": 2,
+        "isAutoRestockIfReturn": true
+      }
+    ]
+  }
+  ```
+* **Description**: Menyimpan mapping item fisik, memotong stok inventaris gudang (`physical_qty` dan `available_qty`), dan merubah status order menjadi `PACKED`.
+
+#### 3. Scan Inbound Return Resi
+
+* **Method**: `GET`
+* **Path**: `/stock-orders/scan/inbound/:trackingId`
+* **Auth Required**: Yes
+* **Description**: Scan resi untuk retur. Backend memvalidasi status (`PACKED` atau `SENDING`) dan gudang user. Mengembalikan item mapping fisik dari outbound scan.
+
+#### 4. Process Return (Parsial Return + Bukti Foto)
+
+* **Method**: `POST`
+* **Path**: `/stock-orders/:id/process-return`
+* **Auth Required**: Yes
+* **Request Payload**:
+  ```json
+  {
+    "returnReason": "Salah ukuran",
+    "proofImageUrl": "http://localhost:3000/public/return-proofs/uuid.jpg",
+    "returnItems": [
+      {
+        "itemId": "uuid-item-1",
+        "itemNameSnapshot": "Baju Kemeja L",
+        "returnedQuantity": 1,
+        "notes": "Baik"
+      },
+      {
+        "itemId": null,
+        "itemNameSnapshot": "Baju Asing Toko Lain",
+        "returnedQuantity": 1,
+        "notes": "Barang Asing"
+      }
+    ]
+  }
+  ```
+* **Description**: Menyimpan header retur (`stock_order_returns`) dan detail retur (`stock_order_return_items`). Mengembalikan stok inventaris gudang secara parsial untuk item yang memiliki flag `is_auto_restock_if_return = true`.
+
+
