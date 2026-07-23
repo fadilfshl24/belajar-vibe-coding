@@ -182,6 +182,99 @@ export class StockOrderController {
     }
   }
 
+  static async previewImport(ctx: Context & { user?: JwtPayload }) {
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const body = ctx.body as { file?: File; purchaseChannel?: string; warehouseId?: string };
+      const parsed = parseImportStockOrder(body);
+
+      if (!parsed.success) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Invalid parameters", 400, parsed.error.format());
+      }
+
+      if (!body.file || !(body.file instanceof File)) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Excel file is required", 400);
+      }
+
+      const { purchaseChannel } = parsed.data;
+
+      const arrayBuffer = await body.file.arrayBuffer();
+      const workbook = xlsx.read(new Uint8Array(arrayBuffer), { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName ?? ""];
+
+      if (!worksheet) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Excel file is empty", 400);
+      }
+
+      const jsonData: any[] = xlsx.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, "Excel file is empty", 400);
+      }
+
+      const [platform] = await db.select().from(platforms).where(
+        sql`UPPER(${platforms.code}) = ${purchaseChannel.toUpperCase()}`
+      ).limit(1);
+
+      if (!platform) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, `Platform ${purchaseChannel} tidak ditemukan`, 400);
+      }
+
+      const allSkus = await db.select().from(itemPlatformSkus)
+        .where(and(eq(itemPlatformSkus.platformId, platform.id), isNull(itemPlatformSkus.deletedAt)));
+
+      const skuMap = new Map(allSkus.map(s => [s.platformSku.toUpperCase(), s.itemId]));
+
+      const trackingIds = new Set<string>();
+      const unmappedSkus: string[] = [];
+
+      for (const row of jsonData) {
+        let trackingId = "";
+        let skuId = "";
+
+        if (purchaseChannel === "TikTok") {
+          trackingId = row["Tracking ID"]?.toString() || "";
+          skuId = row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
+        } else {
+          trackingId = row["Tracking ID"]?.toString() || row["tracking_id"]?.toString() || row["Resi"]?.toString() || "";
+          skuId = row["SKU ID"]?.toString() || row["sku"]?.toString() || "";
+        }
+
+        if (!trackingId || !skuId) continue;
+
+        const itemId = skuMap.get(skuId.toUpperCase());
+        if (!itemId && !unmappedSkus.includes(skuId)) {
+          unmappedSkus.push(skuId);
+        }
+
+        trackingIds.add(trackingId);
+      }
+
+      if (unmappedSkus.length > 0) {
+        ctx.set.status = 400;
+        return failedResponse(correlationId, `Terdapat SKU belum di-mapping: ${unmappedSkus.join(", ")}`, 400);
+      }
+
+      const totalResi = trackingIds.size;
+
+      return successResponse(correlationId, "Preview import berhasil", {
+        totalResi,
+        totalRows: jsonData.length,
+      });
+    } catch (error: any) {
+      ctx.set.status = 500;
+      return failedResponse(correlationId, "Failed to preview import file", 500, error.message);
+    }
+  }
+
   // ── LIST ────────────────────────────────────────────────────────────────────
 
   static async list(ctx: Context) {

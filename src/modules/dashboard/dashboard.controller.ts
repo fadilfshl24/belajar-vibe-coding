@@ -41,7 +41,7 @@ export class DashboardController {
         db
           .select({ count: sql<number>`cast(count(${inventoryStocks.id}) as int)` })
           .from(inventoryStocks)
-          .where(sql`${inventoryStocks.availableQty} < 10`),
+          .where(sql`${inventoryStocks.availableQty} < 100`),
       ]);
 
       const kpiData = {

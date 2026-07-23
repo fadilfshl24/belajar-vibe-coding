@@ -3,6 +3,8 @@ import { inventoryStocks } from "./inventory.schema";
 import { eq, and, sql, asc, desc, ilike, or, isNull, inArray } from "drizzle-orm";
 import { items } from "../item/item.schema";
 import { warehouses } from "../warehouse/warehouse.schema";
+import { uoms } from "../uom/uom.schema";
+import { itemCategories } from "../category/category.schema";
 
 interface FindAllOptions {
   page: number;
@@ -10,6 +12,7 @@ interface FindAllOptions {
   warehouseId?: string;
   warehouseIds?: string[];
   itemId?: string;
+  categoryId?: string;
   searchTerm?: string;
 }
 
@@ -25,6 +28,9 @@ export class InventoryModel {
     }
     if (opts.itemId) {
       conditions.push(eq(inventoryStocks.itemId, opts.itemId));
+    }
+    if (opts.categoryId) {
+      conditions.push(eq(items.categoryId, opts.categoryId));
     }
     if (opts.searchTerm) {
       conditions.push(
@@ -51,11 +57,19 @@ export class InventoryModel {
         itemCode: items.code,
         itemName: items.name,
         isAsset: items.isAsset,
+        categoryId: items.categoryId,
+        categoryName: itemCategories.name,
+        categoryCode: itemCategories.code,
+        uomId: items.uomId,
+        uomName: uoms.name,
+        uomCode: uoms.code,
         updatedAt: inventoryStocks.updatedAt,
       })
       .from(inventoryStocks)
       .innerJoin(items, eq(inventoryStocks.itemId, items.id))
       .innerJoin(warehouses, eq(inventoryStocks.warehouseId, warehouses.id))
+      .leftJoin(uoms, eq(items.uomId, uoms.id))
+      .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
       .where(whereClause)
       .orderBy(desc(inventoryStocks.updatedAt))
       .limit(opts.limit)
@@ -75,6 +89,9 @@ export class InventoryModel {
     if (opts.itemId) {
       conditions.push(eq(inventoryStocks.itemId, opts.itemId));
     }
+    if (opts.categoryId) {
+      conditions.push(eq(items.categoryId, opts.categoryId));
+    }
     if (opts.searchTerm) {
       conditions.push(
         or(
@@ -92,6 +109,8 @@ export class InventoryModel {
       .from(inventoryStocks)
       .innerJoin(items, eq(inventoryStocks.itemId, items.id))
       .innerJoin(warehouses, eq(inventoryStocks.warehouseId, warehouses.id))
+      .leftJoin(uoms, eq(items.uomId, uoms.id))
+      .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
       .where(whereClause);
 
     return record?.count ?? 0;

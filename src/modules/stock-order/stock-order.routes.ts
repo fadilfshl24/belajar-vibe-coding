@@ -7,6 +7,7 @@ export const stockOrderRoutes = new Elysia({ prefix: "/stock-orders" })
 
   // ── Import ─────────────────────────────────────────────────────────────────
   .post("/import", StockOrderController.importExcel)
+  .post("/preview-import", StockOrderController.previewImport)
 
   // ── List & Detail ──────────────────────────────────────────────────────────
   .get("/", StockOrderController.list)

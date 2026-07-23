@@ -16,6 +16,7 @@ export class InventoryController {
       const searchTerm = (ctx.query.searchTerm as string | undefined) || undefined;
       const warehouseId = (ctx.query.warehouseId as string | undefined) || undefined;
       const itemId = (ctx.query.itemId as string | undefined) || undefined;
+      const categoryId = (ctx.query.categoryId as string | undefined) || undefined;
 
       const userId = ctx.user?.sub;
       let visibleWarehouseIds: string[] | undefined = undefined;
@@ -62,8 +63,8 @@ export class InventoryController {
       }
 
       const [totalRecord, records] = await Promise.all([
-        InventoryModel.countAll({ searchTerm, warehouseId, itemId, warehouseIds: visibleWarehouseIds }),
-        InventoryModel.findAll({ page, limit, searchTerm, warehouseId, itemId, warehouseIds: visibleWarehouseIds }),
+        InventoryModel.countAll({ searchTerm, warehouseId, itemId, categoryId, warehouseIds: visibleWarehouseIds }),
+        InventoryModel.findAll({ page, limit, searchTerm, warehouseId, itemId, categoryId, warehouseIds: visibleWarehouseIds }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / limit);
