@@ -24,6 +24,8 @@ export const listStockOrderQuerySchema = z.object({
   status: z.enum(["UNPACKED", "PACKED", "SENDING", "DONE", "RETURNED"]).optional().nullable().or(z.literal("")),
   type: z.enum(["INBOUND", "OUTBOUND"]).optional().nullable().or(z.literal("")),
   purchaseChannel: z.enum(["TikTok", "Shopee", "Lazada", "Tokopedia", "Lainnya"]).optional().nullable().or(z.literal("")),
+  startDate: z.string().optional().nullable().or(z.literal("")),
+  endDate: z.string().optional().nullable().or(z.literal("")),
 });
 
 export const parseListStockOrderQuery = (data: unknown) => {

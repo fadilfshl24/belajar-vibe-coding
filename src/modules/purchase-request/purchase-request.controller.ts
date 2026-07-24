@@ -36,6 +36,7 @@ export class PurchaseRequestController {
       let requestedByUserId: string | undefined = undefined;
       let visibleWarehouseIds: string[] | undefined = undefined;
       let requiredApprovalStage: number | undefined = undefined;
+      let isSuperadminOrAdmin = false;
 
       const userId = ctx.user?.sub;
       if (userId) {
@@ -47,7 +48,8 @@ export class PurchaseRequestController {
           .where(and(isNull(userWarehouseRoles.deletedAt), eq(userWarehouseRoles.userId, userId)));
 
         const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
-        const isGlobalViewer = roleCodes.some((r) => ["superadmin", "admin", "manager"].includes(r));
+        isSuperadminOrAdmin = roleCodes.some((r) => ["superadmin", "admin"].includes(r));
+        const isGlobalViewer = isSuperadminOrAdmin || roleCodes.includes("manager");
         const isWarehouseHead = roleCodes.includes("warehouse_head");
         const isBranchHead = roleCodes.includes("branch_head");
         const isRestrictedByWarehouse = isWarehouseHead || isBranchHead;
@@ -83,8 +85,8 @@ export class PurchaseRequestController {
       // ─────────────────────────────────────────────────────────────────────────
 
       const [totalRecord, records] = await Promise.all([
-        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, requiredApprovalStage }),
-        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, requiredApprovalStage }),
+        PurchaseRequestModel.countAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, isSuperadminOrAdmin, requiredApprovalStage }),
+        PurchaseRequestModel.findAll({ ...params, requestedByUserId, visibleWarehouseIds, currentUserId: userId, isSuperadminOrAdmin, requiredApprovalStage }),
       ]);
 
       const totalPage = Math.ceil(totalRecord / params.limit) || 1;
@@ -433,25 +435,40 @@ export class PurchaseRequestController {
         ctx.set.status = 404;
         return failedResponse(correlationId, "Purchase request not found", 404);
       }
-      if (pr.status === 2 || pr.status === 4) {
+      if (pr.status !== 1) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Approved or already closed purchase requests cannot be cancelled", 400);
+        return failedResponse(correlationId, "Hanya Purchase Request berstatus Pending yang dapat dibatalkan", 400);
       }
 
       const userId = ctx.user?.sub;
+      if (userId) {
+        const userRoleRows = await db
+          .select({ roleCode: roles.code })
+          .from(userWarehouseRoles)
+          .innerJoin(roles, eq(userWarehouseRoles.roleId, roles.id))
+          .where(and(isNull(userWarehouseRoles.deletedAt), eq(userWarehouseRoles.userId, userId)));
+        const roleCodes = [...new Set(userRoleRows.map((r) => r.roleCode))];
+        const isSuperadminOrAdmin = roleCodes.some((r) => ["superadmin", "admin"].includes(r));
+        const isCreator = (pr as any).requestedBy?.id === userId || (pr as any).requestedBy === userId;
+        if (!isSuperadminOrAdmin && !isCreator) {
+          ctx.set.status = 403;
+          return failedResponse(correlationId, "Hanya pembuat Purchase Request, Admin, atau Superadmin yang dapat membatalkan Purchase Request ini.", 403);
+        }
+      }
+
       const deleted = await PurchaseRequestModel.softDelete(id, userId);
 
       await logActivity({
         userId: ctx.user?.sub,
         action: "DELETE_ORDER",
         module: "PURCHASE_REQUEST",
-        description: `User ${ctx.user?.email} menghapus Purchase Request "${pr.code}"`,
+        description: `User ${ctx.user?.email} membatalkan Purchase Request "${pr.code}"`,
       });
 
-      return successResponse(correlationId, "Purchase request deleted successfully", null);
+      return successResponse(correlationId, "Purchase request cancelled successfully", null);
     } catch (err: unknown) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Failed to delete purchase request", 500, err instanceof Error ? err.message : "Unknown error");
+      return failedResponse(correlationId, "Failed to cancel purchase request", 500, err instanceof Error ? err.message : "Unknown error");
     }
   }
 

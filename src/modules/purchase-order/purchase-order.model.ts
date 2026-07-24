@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, isNull, inArray, ne, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, inArray, ne, or, gte, lte } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import {
@@ -37,12 +37,22 @@ function parseOrderBy(orderBy: string): { column: AnyColumn; direction: "asc" | 
   }
 }
 
-function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number }) {
-  const { searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage } = params;
+function buildFilterCondition(params: { filterColumn?: string; searchTerm?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number; startDate?: string; endDate?: string }) {
+  const { searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage, startDate, endDate } = params;
   let conds = isNull(purchaseOrders.deletedAt);
   if (status !== undefined) conds = and(conds, eq(purchaseOrders.status, status))!;
   if (warehouseId) conds = and(conds, eq(purchaseOrders.warehouseId, warehouseId))!;
   if (vendorId) conds = and(conds, eq(purchaseOrders.vendorId, vendorId))!;
+  if (startDate) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    conds = and(conds, gte(purchaseOrders.createdAt, start))!;
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    conds = and(conds, lte(purchaseOrders.createdAt, end))!;
+  }
   if (visibleWarehouseIds !== undefined) {
     if (visibleWarehouseIds.length === 0) {
       // If array is empty, user is mapped to 0 warehouses => they shouldn't see anything.
@@ -99,10 +109,12 @@ export class PurchaseOrderModel {
     vendorId?: string;
     visibleWarehouseIds?: string[];
     requiredApprovalStage?: number;
+    startDate?: string;
+    endDate?: string;
   }): Promise<PurchaseOrderDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage, startDate, endDate } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, vendorId, visibleWarehouseIds, requiredApprovalStage, startDate, endDate });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseOrders.findMany({
@@ -123,7 +135,7 @@ export class PurchaseOrderModel {
     return result.map(toPurchaseOrderDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; vendorId?: string; visibleWarehouseIds?: string[]; requiredApprovalStage?: number; startDate?: string; endDate?: string }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseOrders).where(whereClause);
     return result[0]?.total ?? 0;
@@ -145,7 +157,12 @@ export class PurchaseOrderModel {
         details: {
           where: isNull(purchaseOrderDetails.deletedAt),
           with: { 
-            item: true,
+            item: {
+              with: {
+                uom: true,
+                category: true,
+              }
+            },
             quotationPlanDetail: {
               with: {
                 quotationPlan: true

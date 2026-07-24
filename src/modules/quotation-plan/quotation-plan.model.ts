@@ -6,7 +6,7 @@ import { purchaseOrders, purchaseOrderDetails, purchaseOrderRequests } from "../
 import { itemPriceHistories } from "../item/item.schema";
 import { quotationPlanPurchaseRequests } from "./quotation-plan.schema";
 import { approvalSteps } from "../approval-step/approval-step.schema";
-import { eq, and, sql, or, inArray, desc, ne } from "drizzle-orm";
+import { eq, and, sql, or, inArray, desc, ne, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { createQuotationPlanSchema, approvalQPSchema } from "./quotation-plan.validation";
 import { NotFoundError } from "elysia";
@@ -66,7 +66,11 @@ export class QuotationPlanModel {
     limit?: number;
     search?: string;
     purchaseRequestId?: string;
+    warehouseId?: string;
     warehouseIds?: string[];
+    status?: number;
+    startDate?: string;
+    endDate?: string;
     requiredApprovalStage?: number;
   }) {
     const page = params.page || 1;
@@ -77,6 +81,22 @@ export class QuotationPlanModel {
 
     if (params.search) {
       conditions.push(sql`${quotationPlans.code} ILIKE ${`%${params.search}%`}`);
+    }
+    if (params.status !== undefined) {
+      conditions.push(eq(quotationPlans.status, params.status));
+    }
+    if (params.warehouseId) {
+      conditions.push(eq(quotationPlans.warehouseId, params.warehouseId));
+    }
+    if (params.startDate) {
+      const start = new Date(params.startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(quotationPlans.createdAt, start));
+    }
+    if (params.endDate) {
+      const end = new Date(params.endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(quotationPlans.createdAt, end));
     }
     if (params.purchaseRequestId) {
       // In a pivot setup, finding by PR ID is more complex. 
@@ -125,12 +145,32 @@ export class QuotationPlanModel {
   static async countAll(params: {
     search?: string;
     purchaseRequestId?: string;
+    warehouseId?: string;
     warehouseIds?: string[];
+    status?: number;
+    startDate?: string;
+    endDate?: string;
     requiredApprovalStage?: number;
   }) {
     const conditions = [sql`${quotationPlans.deletedAt} IS NULL`];
     if (params.search) {
       conditions.push(sql`${quotationPlans.code} ILIKE ${`%${params.search}%`}`);
+    }
+    if (params.status !== undefined) {
+      conditions.push(eq(quotationPlans.status, params.status));
+    }
+    if (params.warehouseId) {
+      conditions.push(eq(quotationPlans.warehouseId, params.warehouseId));
+    }
+    if (params.startDate) {
+      const start = new Date(params.startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(quotationPlans.createdAt, start));
+    }
+    if (params.endDate) {
+      const end = new Date(params.endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(quotationPlans.createdAt, end));
     }
     if (params.purchaseRequestId) {
       conditions.push(sql`EXISTS (
@@ -256,6 +296,26 @@ export class QuotationPlanModel {
       if (nextStatus === 3) {
         await this.handleFinalApproval(tx, qp, userId);
       }
+
+      return { success: true };
+    });
+  }
+
+  static async cancel(id: string, userId: string) {
+    return await db.transaction(async (tx) => {
+      const qp = await tx.query.quotationPlans.findFirst({
+        where: and(eq(quotationPlans.id, id), sql`${quotationPlans.deletedAt} IS NULL`),
+      });
+
+      if (!qp) throw new NotFoundError("Quotation Plan not found");
+
+      if (qp.status !== 1 && qp.status !== 2) {
+        throw new Error("Only pending Quotation Plans can be cancelled");
+      }
+
+      await tx.update(quotationPlans)
+        .set({ status: 5, updatedBy: userId, updatedAt: new Date() })
+        .where(eq(quotationPlans.id, id));
 
       return { success: true };
     });

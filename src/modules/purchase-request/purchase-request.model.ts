@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne, gte, lte } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { purchaseRequests, purchaseRequestDetails } from "./purchase-request.schema";
@@ -45,9 +45,12 @@ function buildFilterCondition(params: {
   requestedByUserId?: string;
   visibleWarehouseIds?: string[];
   currentUserId?: string;
+  isSuperadminOrAdmin?: boolean;
   requiredApprovalStage?: number; // when set, filter pending PRs to only this stage
+  startDate?: string;
+  endDate?: string;
 }) {
-  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
+  const { filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, isSuperadminOrAdmin, requiredApprovalStage, startDate, endDate } = params;
   let conds = isNull(purchaseRequests.deletedAt);
   if (status !== undefined) {
     conds = and(conds, eq(purchaseRequests.status, status))!;
@@ -57,6 +60,16 @@ function buildFilterCondition(params: {
   }
   if (customerId) {
     conds = and(conds, eq(purchaseRequests.customerId, customerId))!;
+  }
+  if (startDate) {
+    const start = new Date(startDate);
+    start.setHours(0, 0, 0, 0);
+    conds = and(conds, gte(purchaseRequests.createdAt, start))!;
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    conds = and(conds, lte(purchaseRequests.createdAt, end))!;
   }
   // Role-based visibility: staff can only see their own PRs
   if (requestedByUserId) {
@@ -82,8 +95,8 @@ function buildFilterCondition(params: {
   }
   // ──────────────────────────────────────────────────────────────────────────
 
-  // Custom logic: Cancelled PRs (status = 4) are only visible to the user who created them
-  if (currentUserId) {
+  // Custom logic: Cancelled PRs (status = 4) are ONLY visible to superadmin, admin, or the staff who created the PR
+  if (currentUserId && !isSuperadminOrAdmin) {
     // Show PR if: status is NOT 4, OR (status IS 4 AND requestedBy IS currentUserId)
     const notCancelled = ne(purchaseRequests.status, 4);
     const isCancelledAndMine = and(
@@ -136,11 +149,14 @@ export class PurchaseRequestModel {
     requestedByUserId?: string;
     visibleWarehouseIds?: string[];
     currentUserId?: string;
+    isSuperadminOrAdmin?: boolean;
     requiredApprovalStage?: number;
+    startDate?: string;
+    endDate?: string;
   }): Promise<PurchaseRequestDTO[]> {
-    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage } = params;
+    const { page, limit, orderBy, searchTerm, filterColumn, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, isSuperadminOrAdmin, requiredApprovalStage, startDate, endDate } = params;
     const { column, direction } = parseOrderBy(orderBy);
-    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, requiredApprovalStage });
+    const whereClause = buildFilterCondition({ filterColumn, searchTerm, status, warehouseId, customerId, requestedByUserId, visibleWarehouseIds, currentUserId, isSuperadminOrAdmin, requiredApprovalStage, startDate, endDate });
     const offset = (page - 1) * limit;
 
     const result = await db.query.purchaseRequests.findMany({
@@ -174,7 +190,7 @@ export class PurchaseRequestModel {
     return result.map(toPurchaseRequestDTO);
   }
 
-  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string; requiredApprovalStage?: number }): Promise<number> {
+  static async countAll(params: { searchTerm?: string; filterColumn?: string; status?: number; warehouseId?: string; customerId?: string; requestedByUserId?: string; visibleWarehouseIds?: string[]; currentUserId?: string; isSuperadminOrAdmin?: boolean; requiredApprovalStage?: number; startDate?: string; endDate?: string }): Promise<number> {
     const whereClause = buildFilterCondition(params);
     const result = await db.select({ total: count() }).from(purchaseRequests).where(whereClause as any);
     return result[0]?.total ?? 0;
@@ -486,9 +502,40 @@ export class PurchaseRequestModel {
           await tx.insert(documentApprovals).values(approvalValues);
         }
       } 
-      // 2. Approving or Rejecting when Pending (1)
+      // 2. Approving, Rejecting, or Cancelling when Pending (1)
       else if (pr.status === 1) {
-        if (status === 3) {
+        if (status === 4) {
+          // Cancelling: Must be staff who created the PR, Admin, or Superadmin
+          const isAdmin = userRoleRecords.some(r => r.roleName === "admin");
+          const isCreator = pr.requestedBy === userId;
+          const canCancel = isSuperadmin || isAdmin || isCreator;
+
+          if (!canCancel) {
+            throw new Error("Hanya pembuat Purchase Request, Admin, atau Superadmin yang dapat membatalkan Purchase Request ini.");
+          }
+
+          // Update pending approval steps to Cancelled
+          await tx
+            .update(documentApprovals)
+            .set({
+              status: 2,
+              approvedBy: userId,
+              approvedAt: new Date(),
+              remark: "Dibatalkan oleh pembuat PR / Admin",
+              updatedAt: new Date(),
+              updatedBy: userId,
+            })
+            .where(
+              and(
+                eq(documentApprovals.documentType, "PR"),
+                eq(documentApprovals.documentId, id),
+                eq(documentApprovals.status, 0)
+              )
+            );
+
+          updatePayload.status = 4; // Cancelled
+          updatePayload.remark = remark || null;
+        } else if (status === 3) {
           // Rejecting: Must be the active stage approver or Superadmin
           let canReject = isSuperadmin;
           if (pr.currentApprovalStage === 0 && isWarehouseHead) canReject = true;

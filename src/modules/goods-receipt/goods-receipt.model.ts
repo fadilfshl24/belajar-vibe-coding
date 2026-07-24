@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -38,8 +38,10 @@ export class GoodsReceiptModel {
     status?: number;
     warehouseId?: string;
     vendorId?: string;
+    startDate?: string;
+    endDate?: string;
   }) {
-    const { page, limit, search, filterColumn, status, warehouseId, vendorId } = params;
+    const { page, limit, search, filterColumn, status, warehouseId, vendorId, startDate, endDate } = params;
     const offset = (page - 1) * limit;
 
     const conditions = [isNull(goodsReceipts.deletedAt)];
@@ -59,6 +61,16 @@ export class GoodsReceiptModel {
     if (status !== undefined) conditions.push(eq(goodsReceipts.status, status));
     if (warehouseId) conditions.push(eq(goodsReceipts.warehouseId, warehouseId));
     if (vendorId) conditions.push(eq(goodsReceipts.vendorId, vendorId));
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(goodsReceipts.createdAt, start));
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(goodsReceipts.createdAt, end));
+    }
 
     const whereClause = and(...conditions);
 

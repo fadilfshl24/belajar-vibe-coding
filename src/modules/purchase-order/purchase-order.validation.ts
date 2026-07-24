@@ -55,6 +55,8 @@ export const poListQuerySchema = z.object({
   status: z.coerce.number().int().min(0).max(9).optional(),
   warehouseId: z.string().uuid().optional(),
   vendorId: z.string().uuid().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 export function parseCreatePOInput(body: unknown) {

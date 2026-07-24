@@ -6,7 +6,7 @@ import {
   type StockOrderItemMappingInsert,
   type StockOrderReturnInsert, type StockOrderReturnItemInsert,
 } from "./stock-order.schema";
-import { eq, and, isNull, desc, ilike, or, inArray, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, ilike, or, inArray, sql, gte, lte } from "drizzle-orm";
 import { items, itemPackageDetails } from "../item/item.schema";
 import { uoms } from "../uom/uom.schema";
 import { itemCategories } from "../category/category.schema";
@@ -29,6 +29,8 @@ interface FindAllOptions {
   paymentMethod?: string;
   type?: "INBOUND" | "OUTBOUND";
   purchaseChannel?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +142,17 @@ export class StockOrderModel {
     if (opts.paymentMethod) conditions.push(ilike(stockOrders.paymentMethod, `%${opts.paymentMethod}%`));
     if (opts.type) conditions.push(eq(stockOrders.type, opts.type));
     if (opts.purchaseChannel) conditions.push(eq(stockOrders.purchaseChannel, opts.purchaseChannel));
+
+    if (opts.startDate) {
+      const start = new Date(opts.startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(stockOrders.createdAt, start));
+    }
+    if (opts.endDate) {
+      const end = new Date(opts.endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockOrders.createdAt, end));
+    }
 
     if (opts.search) {
       conditions.push(

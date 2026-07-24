@@ -36,6 +36,8 @@ export const prListQuerySchema = z.object({
   status: z.coerce.number().int().min(0).max(4).optional(),
   warehouseId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 export function parseCreatePRInput(body: unknown) {

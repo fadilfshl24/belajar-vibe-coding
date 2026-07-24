@@ -30,6 +30,10 @@ export const qpListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(10),
   search: z.string().optional(),
   purchaseRequestId: z.string().uuid().optional(),
+  status: z.coerce.number().int().min(0).max(5).optional(),
+  warehouseId: z.string().uuid().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 });
 
 export function parseCreateQPInput(body: unknown) {

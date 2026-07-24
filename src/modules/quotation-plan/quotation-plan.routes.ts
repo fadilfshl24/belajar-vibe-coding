@@ -32,4 +32,11 @@ export const quotationPlanRoutes = new Elysia({ prefix: "/api/quotation-plans" }
     {
       beforeHandle: [permissionGuard("quotation_plan", "canUpdate")]
     }
+  )
+  .post(
+    "/:id/cancel",
+    QuotationPlanController.cancel,
+    {
+      beforeHandle: [permissionGuard("quotation_plan", "canUpdate")]
+    }
   );

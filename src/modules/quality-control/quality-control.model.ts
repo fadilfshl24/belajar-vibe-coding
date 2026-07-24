@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, inArray, ne, or } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, ne, or, gte, lte } from "drizzle-orm";
 import { db } from "../../core/db";
 import { qualityControls, qualityControlDetails } from "./quality-control.schema";
 import { documentApprovals } from "../approval/document-approval.schema";
@@ -41,11 +41,43 @@ export class QualityControlModel {
     search?: string;
     filterColumn?: string;
     status?: number;
+    warehouseId?: string;
+    startDate?: string;
+    endDate?: string;
   }, userId?: string) {
-    const { page, limit, status } = params;
+    const { page, limit, search, status, warehouseId, startDate, endDate } = params;
     const offset = (page - 1) * limit;
 
     const conditions = [isNull(qualityControls.deletedAt)];
+
+    if (search) {
+      conditions.push(or(
+        (qualityControls.code as any).ilike ? (qualityControls.code as any).ilike(`%${search}%`) : eq(qualityControls.code, search)
+      )!);
+    }
+
+    if (warehouseId) {
+      const warehouseGRs = await db.select({ id: goodsReceipts.id })
+        .from(goodsReceipts)
+        .where(eq(goodsReceipts.warehouseId, warehouseId));
+      const grIds = warehouseGRs.map(g => g.id);
+      if (grIds.length > 0) {
+        conditions.push(inArray(qualityControls.goodsReceiptId, grIds));
+      } else {
+        conditions.push(eq(qualityControls.goodsReceiptId, "00000000-0000-0000-0000-000000000000"));
+      }
+    }
+
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      conditions.push(gte(qualityControls.createdAt, start));
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(qualityControls.createdAt, end));
+    }
 
     // Role-based visibility: filter by warehouse
     let requiredApprovalStage: number | undefined = undefined;

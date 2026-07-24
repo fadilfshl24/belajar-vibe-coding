@@ -241,4 +241,28 @@ export class QuotationPlanController {
       return failedResponse(correlationId, error.message || "Internal server error", statusCode, error.message);
     }
   }
+
+  static async cancel(ctx: Context & { user?: JwtPayload }) {
+    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      const id = ctx.params.id;
+      const userId = ctx.user!.sub;
+
+      await QuotationPlanModel.cancel(id, userId);
+
+      await logActivity({
+        userId: userId,
+        action: "CANCEL",
+        module: "QUOTATION_PLAN",
+        description: `Cancelled Quotation Plan ${id}`,
+      });
+
+      return successResponse(correlationId, "Quotation Plan cancelled successfully", null);
+    } catch (error: any) {
+      const statusCode = (error.statusCode as 400 | 401 | 403 | 404 | 409 | 500) || 500;
+      ctx.set.status = statusCode;
+      return failedResponse(correlationId, error.message || "Internal server error", statusCode, error.message);
+    }
+  }
 }
