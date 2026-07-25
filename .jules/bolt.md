@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-07-25 - Prevent N+1 queries during Excel imports
+**Learning:** Found an N+1 query bottleneck when importing rows from Excel because we queried `findByTrackingId` inside a loop in a transaction. We can speed this up by collecting IDs and querying `inArray` to find duplicates. Drizzle's `inArray` needs a length check to avoid failing on empty input arrays.
+**Action:** Always batch query and use `Set` lookups instead of querying DB per row in loops during imports/bulk inserts.

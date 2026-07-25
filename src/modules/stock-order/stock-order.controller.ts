@@ -12,7 +12,8 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import * as xlsx from "xlsx";
 import { db } from "../../core/db";
 import { itemPlatformSkus } from "../item-platform-sku/item-platform-sku.schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { stockOrders } from "./stock-order.schema";
 import type { StockOrderInsert, StockOrderItemInsert } from "./stock-order.schema";
 import { platforms } from "../platform";
 
@@ -158,11 +159,28 @@ export class StockOrderController {
         });
       }
 
+      // Performance optimization: Batch query existing tracking IDs to prevent N+1 queries in the loop
+      const trackingIdsToImport = Array.from(stockOrdersMap.keys());
+      const existingTrackingIds = new Set<string>();
+
+      if (trackingIdsToImport.length > 0) {
+        const existingRecords = await db
+          .select({ trackingId: stockOrders.trackingId })
+          .from(stockOrders)
+          .where(and(
+            inArray(stockOrders.trackingId, trackingIdsToImport),
+            isNull(stockOrders.deletedAt)
+          ));
+
+        for (const record of existingRecords) {
+          existingTrackingIds.add(record.trackingId);
+        }
+      }
+
       let importedCount = 0;
       await db.transaction(async (trx) => {
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }
