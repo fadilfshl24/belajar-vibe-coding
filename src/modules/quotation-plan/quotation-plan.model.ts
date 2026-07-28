@@ -398,11 +398,30 @@ export class QuotationPlanModel {
       await tx.insert(itemPriceHistories).values(priceHistoryValues);
     }
 
-    // 4. Update PR Details Processed Quantity
-    for (const d of qp.details) {
-      await tx.execute(
-        sql`UPDATE purchase_request_details SET processed_quantity = processed_quantity + ${d.offeredQuantity} WHERE id = ${d.purchaseRequestDetailId}`
-      );
+    // 4. Update PR Details Processed Quantity (Optimized to O(1) query)
+    // ⚡ Bolt: Use a single raw SQL query with CASE statements to batch update all PR details
+    // This avoids N+1 queries in the transaction without using Promise.all which breaks connection state
+    if (qp.details.length > 0) {
+      // Pre-aggregate quantities to avoid silent overwrites if multiple details point to the same PR detail ID
+      const quantityMap = new Map<string, number>();
+      for (const d of qp.details) {
+        quantityMap.set(d.purchaseRequestDetailId, (quantityMap.get(d.purchaseRequestDetailId) || 0) + Number(d.offeredQuantity));
+      }
+
+      const cases = [];
+      const ids = [];
+      for (const [id, qty] of quantityMap.entries()) {
+        cases.push(sql`WHEN id = ${id} THEN processed_quantity + ${qty}`);
+        ids.push(sql`${id}`);
+      }
+
+      if (ids.length > 0) {
+        await tx.execute(
+          sql`UPDATE purchase_request_details
+              SET processed_quantity = CASE ${sql.join(cases, sql` `)} END
+              WHERE id IN (${sql.join(ids, sql`, `)})`
+        );
+      }
     }
 
     // 5. Check if all items in PR are fulfilled
@@ -411,19 +430,29 @@ export class QuotationPlanModel {
       where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
     });
     
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    // ⚡ Bolt: Optimize by fetching all details in 1 query, calculating fulfilled PRs in memory, and updating in 1 query
+    const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
+
+    if (prIds.length > 0) {
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, prIds)
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const fulfilledPrIds: string[] = [];
 
-      if (isFullyFulfilled) {
+      for (const prId of prIds) {
+        const detailsForPr = allPrDetails.filter((d: any) => d.purchaseRequestId === prId);
+        const isFullyFulfilled = detailsForPr.length > 0 && detailsForPr.every((d: any) => d.processedQuantity >= d.quantity);
+        if (isFullyFulfilled) {
+          fulfilledPrIds.push(prId);
+        }
+      }
+
+      if (fulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
           .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
