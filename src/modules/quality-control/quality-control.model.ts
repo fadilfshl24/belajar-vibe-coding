@@ -351,31 +351,56 @@ export class QualityControlModel {
           }));
           await tx.insert(transactionItems).values(trxInItems);
 
-          // Update real inventory stock
+          // ⚡ Bolt: Performance optimization
+          // Removed N+1 database queries by pre-aggregating item pass quantities
+          // and fetching all relevant inventory stocks in a single bulk read using inArray.
+          // Note: Aggregating pass quantities is critical to prevent silent overwrites
+          // caused by processing duplicate items sequentially inside a transaction.
+          const passQtyAggMap = new Map<string, number>();
           for (const detail of passDetails) {
-            const stock = await tx.query.inventoryStocks.findFirst({
-              where: and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId))
-            });
+            const currentQty = passQtyAggMap.get(detail.itemId) || 0;
+            passQtyAggMap.set(detail.itemId, currentQty + detail.passQuantity);
+          }
+          const itemIdsToFetch = Array.from(passQtyAggMap.keys());
 
-            if (stock) {
-              await tx.update(inventoryStocks)
-                .set({
-                  physicalQty: (parseFloat(stock.physicalQty) + detail.passQuantity).toString(),
-                  availableQty: (parseFloat(stock.availableQty) + detail.passQuantity).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: userId
-                })
-                .where(eq(inventoryStocks.id, stock.id));
-            } else {
-              await tx.insert(inventoryStocks).values({
-                warehouseId,
-                itemId: detail.itemId,
-                physicalQty: detail.passQuantity.toString(),
-                availableQty: detail.passQuantity.toString(),
-                reservedQty: "0.00",
-                createdBy: userId,
-                updatedBy: userId,
-              });
+          if (itemIdsToFetch.length > 0) {
+            const existingStocks = await tx.query.inventoryStocks.findMany({
+              where: and(
+                eq(inventoryStocks.warehouseId, warehouseId),
+                inArray(inventoryStocks.itemId, itemIdsToFetch)
+              )
+            });
+            const stockMap = new Map(existingStocks.map(s => [s.itemId, s]));
+
+            const newStocksToInsert = [];
+
+            for (const [itemId, aggPassQuantity] of passQtyAggMap.entries()) {
+              const stock = stockMap.get(itemId);
+
+              if (stock) {
+                await tx.update(inventoryStocks)
+                  .set({
+                    physicalQty: (parseFloat(stock.physicalQty) + aggPassQuantity).toString(),
+                    availableQty: (parseFloat(stock.availableQty) + aggPassQuantity).toString(),
+                    updatedAt: new Date(),
+                    updatedBy: userId
+                  })
+                  .where(eq(inventoryStocks.id, stock.id));
+              } else {
+                newStocksToInsert.push({
+                  warehouseId,
+                  itemId: itemId,
+                  physicalQty: aggPassQuantity.toString(),
+                  availableQty: aggPassQuantity.toString(),
+                  reservedQty: "0.00",
+                  createdBy: userId,
+                  updatedBy: userId,
+                });
+              }
+            }
+
+            if (newStocksToInsert.length > 0) {
+              await tx.insert(inventoryStocks).values(newStocksToInsert);
             }
           }
         }
