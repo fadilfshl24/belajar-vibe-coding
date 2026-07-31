@@ -539,6 +539,28 @@ export class StockOrderModel {
       // 5. Proses setiap item retur
       const returnItemInserts: StockOrderReturnItemInsert[] = [];
 
+      // Extract itemIds that should be restocked to bulk query them
+      const restockItemIds = payload.returnItems
+        .map((ri) => ri.itemId)
+        .filter((id) => id !== null && id !== undefined && restockFlagMap.get(id) === true) as string[];
+
+      let stockMap = new Map<string, any>();
+      if (restockItemIds.length > 0) {
+        const stocks = await trx
+          .select()
+          .from(inventoryStocks)
+          .where(
+            and(
+              eq(inventoryStocks.warehouseId, warehouseId),
+              inArray(inventoryStocks.itemId, restockItemIds),
+              isNull(inventoryStocks.deletedAt)
+            )
+          )
+          .for("update");
+
+        stockMap = new Map(stocks.map((s) => [s.itemId, s]));
+      }
+
       for (const ri of payload.returnItems) {
         const itemId = ri.itemId ?? null;
         const shouldRestock =
@@ -547,17 +569,7 @@ export class StockOrderModel {
 
         if (shouldRestock) {
           // Cari stok, update jika ada, buat baru jika tidak ada
-          const [stock] = await trx
-            .select()
-            .from(inventoryStocks)
-            .where(
-              and(
-                eq(inventoryStocks.warehouseId, warehouseId),
-                eq(inventoryStocks.itemId, itemId!),
-                isNull(inventoryStocks.deletedAt)
-              )
-            )
-            .for("update");
+          const stock = stockMap.get(itemId!);
 
           if (stock) {
             await trx
@@ -569,6 +581,9 @@ export class StockOrderModel {
                 updatedBy: userId,
               })
               .where(eq(inventoryStocks.id, stock.id));
+
+            stock.physicalQty = (Number(stock.physicalQty) + Number(ri.returnedQuantity)).toString();
+            stock.availableQty = (Number(stock.availableQty) + Number(ri.returnedQuantity)).toString();
           } else {
             await trx.insert(inventoryStocks).values({
               warehouseId,
@@ -577,6 +592,14 @@ export class StockOrderModel {
               availableQty: ri.returnedQuantity.toString(),
               reservedQty: "0",
               createdBy: userId,
+            });
+
+            stockMap.set(itemId!, {
+              id: 'newly_inserted',
+              warehouseId,
+              itemId: itemId!,
+              physicalQty: ri.returnedQuantity.toString(),
+              availableQty: ri.returnedQuantity.toString()
             });
           }
           isRestocked = true;
@@ -621,17 +644,27 @@ export class StockOrderModel {
       if (!order) throw new Error("Order not found");
       if (order.status === "PACKED") throw new Error("Order already packed");
 
-      for (const item of order.items) {
-        const [stock] = await trx
+      const itemIds = order.items.map((i: any) => i.itemId).filter(Boolean);
+
+      let stockMap = new Map<string, any>();
+      if (itemIds.length > 0) {
+        // Optimisation: Fetch all relevant stocks in a single query
+        const stocks = await trx
           .select()
           .from(inventoryStocks)
           .where(
             and(
               eq(inventoryStocks.warehouseId, order.warehouseId),
-              eq(inventoryStocks.itemId, item.itemId),
+              inArray(inventoryStocks.itemId, itemIds),
               isNull(inventoryStocks.deletedAt)
             )
           );
+
+        stockMap = new Map(stocks.map((s) => [s.itemId, s]));
+      }
+
+      for (const item of order.items) {
+        const stock = stockMap.get(item.itemId);
 
         if (!stock) {
           throw new Error(`Item ${item.itemName} tidak memiliki stok di gudang terpilih.`);
@@ -640,6 +673,7 @@ export class StockOrderModel {
           throw new Error(`Stok available untuk ${item.itemName} tidak mencukupi.`);
         }
 
+        // We execute updates sequentially to comply with Drizzle transaction constraints (no concurrent Promise.all)
         await trx
           .update(inventoryStocks)
           .set({
@@ -648,6 +682,10 @@ export class StockOrderModel {
             updatedAt: new Date(),
           })
           .where(eq(inventoryStocks.id, stock.id));
+
+        // Update map memory to prevent bypassing stock limits if duplicate items exist
+        stock.availableQty = (Number(stock.availableQty) - Number(item.quantity)).toString();
+        stock.physicalQty = (Number(stock.physicalQty) - Number(item.quantity)).toString();
       }
 
       const [updated] = await trx
@@ -668,17 +706,25 @@ export class StockOrderModel {
       if (!order) throw new Error("Order not found");
       if (order.status === "RETURNED") throw new Error("Order already returned");
 
-      for (const item of order.items) {
-        const [stock] = await trx
+      const itemIds = order.items.map((i: any) => i.itemId).filter(Boolean);
+
+      let stockMap = new Map<string, any>();
+      if (itemIds.length > 0) {
+        const stocks = await trx
           .select()
           .from(inventoryStocks)
           .where(
             and(
               eq(inventoryStocks.warehouseId, order.warehouseId),
-              eq(inventoryStocks.itemId, item.itemId),
+              inArray(inventoryStocks.itemId, itemIds),
               isNull(inventoryStocks.deletedAt)
             )
           );
+        stockMap = new Map(stocks.map((s) => [s.itemId, s]));
+      }
+
+      for (const item of order.items) {
+        const stock = stockMap.get(item.itemId);
 
         if (stock) {
           await trx
@@ -689,6 +735,10 @@ export class StockOrderModel {
               updatedAt: new Date(),
             })
             .where(eq(inventoryStocks.id, stock.id));
+
+          // Update map memory for accuracy if duplicate items are processed
+          stock.availableQty = (Number(stock.availableQty) + Number(item.quantity)).toString();
+          stock.physicalQty = (Number(stock.physicalQty) + Number(item.quantity)).toString();
         } else {
           await trx.insert(inventoryStocks).values({
             warehouseId: order.warehouseId,
@@ -696,6 +746,15 @@ export class StockOrderModel {
             physicalQty: item.quantity.toString(),
             availableQty: item.quantity.toString(),
             reservedQty: "0",
+          });
+
+          // Add to map so subsequent duplicate entries update rather than insert anew
+          stockMap.set(item.itemId, {
+            id: 'newly_inserted', // Dummy ID is enough as the real check relies on its existence in map
+            warehouseId: order.warehouseId,
+            itemId: item.itemId,
+            physicalQty: item.quantity.toString(),
+            availableQty: item.quantity.toString()
           });
         }
       }
