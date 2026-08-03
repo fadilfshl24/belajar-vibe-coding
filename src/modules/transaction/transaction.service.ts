@@ -7,6 +7,33 @@ import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/pu
 
 export class TransactionService {
   /**
+   * Returns a set of locked itemIds for the given warehouse and array of itemIds.
+   * Optimized to fetch in a single query to prevent N+1 query problems.
+   */
+  static async getLockedStockItems(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds.length) return new Set();
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, itemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedPRs.map(pr => pr.itemId));
+  }
+
+  /**
    * Returns true if the given item at the given warehouse is locked by an Approved Purchase Request.
    * Only Superadmin can override a locked stock.
    */
@@ -38,11 +65,16 @@ export class TransactionService {
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
+    // ⚡ Bolt: Fetch all locked items in a single query to prevent N+1 query problem inside the loop
     if (txData.type === "OUT" && !isSuperadmin) {
-      for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
-          throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
+      const itemIdsToCheck = [...new Set(txData.items.map(item => item.itemId))];
+      if (itemIdsToCheck.length > 0) {
+        const lockedItems = await TransactionService.getLockedStockItems(txData.warehouseId, itemIdsToCheck);
+
+        for (const item of txData.items) {
+          if (lockedItems.has(item.itemId)) {
+            throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
+          }
         }
       }
     }
