@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,18 +164,28 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
+      const poDetailIds = [...new Set(payload.details.map((d) => d.purchaseOrderDetailId))];
+
+      let poDetailsMap = new Map();
+      if (poDetailIds.length > 0) {
+        const poDetailsRaw = await tx.query.purchaseOrderDetails.findMany({
+          where: and(inArray(purchaseOrderDetails.id, poDetailIds), isNull(purchaseOrderDetails.deletedAt))
+        });
+        poDetailsMap = new Map(poDetailsRaw.map(pd => [pd.id, pd]));
+      }
+
+      const grDetailsToInsert = [];
+
       for (const detail of payload.details) {
         // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
-        });
+        const poDetail = poDetailsMap.get(detail.purchaseOrderDetailId);
         
         if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
         
         // Allowed over-receive? We might just cap it or allow it depending on business logic.
         // For now, let's just log or accept the received quantity.
 
-        await tx.insert(goodsReceiptDetails).values({
+        grDetailsToInsert.push({
           goodsReceiptId: gr.id,
           purchaseOrderDetailId: detail.purchaseOrderDetailId,
           itemId: detail.itemId,
@@ -194,6 +204,10 @@ export class GoodsReceiptModel {
             updatedBy: userId,
           })
           .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+      }
+
+      if (grDetailsToInsert.length > 0) {
+        await tx.insert(goodsReceiptDetails).values(grDetailsToInsert);
       }
 
       // 4. Update PO Status
