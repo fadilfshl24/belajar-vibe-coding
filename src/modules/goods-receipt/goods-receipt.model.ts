@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,18 +164,25 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
-      for (const detail of payload.details) {
-        // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
-        });
-        
+      // ⚡ Bolt: Fixed N+1 query by batch fetching PO Details and batch inserting GR Details
+      const uniquePoDetailIds = [...new Set(payload.details.map(d => d.purchaseOrderDetailId))];
+
+      if (uniquePoDetailIds.length === 0) {
+        throw new Error("No details provided");
+      }
+
+      const poDetailsData = await tx.query.purchaseOrderDetails.findMany({
+        where: and(inArray(purchaseOrderDetails.id, uniquePoDetailIds), isNull(purchaseOrderDetails.deletedAt))
+      });
+
+      const poDetailMap = new Map(poDetailsData.map(pd => [pd.id, pd]));
+
+      // Prepare bulk insert
+      const grDetailsToInsert = payload.details.map(detail => {
+        const poDetail = poDetailMap.get(detail.purchaseOrderDetailId);
         if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
         
-        // Allowed over-receive? We might just cap it or allow it depending on business logic.
-        // For now, let's just log or accept the received quantity.
-
-        await tx.insert(goodsReceiptDetails).values({
+        return {
           goodsReceiptId: gr.id,
           purchaseOrderDetailId: detail.purchaseOrderDetailId,
           itemId: detail.itemId,
@@ -183,10 +190,17 @@ export class GoodsReceiptModel {
           remark: detail.remark,
           createdBy: userId,
           updatedBy: userId,
-        });
+        };
+      });
 
-        // Update PO Detail's receivedQuantity
+      // Bulk insert goods receipt details
+      await tx.insert(goodsReceiptDetails).values(grDetailsToInsert);
+
+      // Sequentially update PO Details received quantity (avoiding parallel transactions on same connection)
+      for (const detail of payload.details) {
+        const poDetail = poDetailMap.get(detail.purchaseOrderDetailId)!;
         const newReceivedQty = poDetail.receivedQuantity + detail.receivedQuantity;
+
         await tx.update(purchaseOrderDetails)
           .set({
             receivedQuantity: newReceivedQty,
@@ -194,6 +208,9 @@ export class GoodsReceiptModel {
             updatedBy: userId,
           })
           .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+
+        // Update the map for subsequent details that might reference the same PO detail
+        poDetail.receivedQuantity = newReceivedQty;
       }
 
       // 4. Update PO Status
