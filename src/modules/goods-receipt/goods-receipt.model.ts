@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,18 +164,21 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
-      for (const detail of payload.details) {
-        // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
-        });
-        
-        if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
-        
-        // Allowed over-receive? We might just cap it or allow it depending on business logic.
-        // For now, let's just log or accept the received quantity.
+      const allPoDetails = await tx.query.purchaseOrderDetails.findMany({
+        where: and(eq(purchaseOrderDetails.purchaseOrderId, payload.purchaseOrderId), isNull(purchaseOrderDetails.deletedAt))
+      });
 
-        await tx.insert(goodsReceiptDetails).values({
+      const poDetailMap = new Map(allPoDetails.map(pd => [pd.id, pd]));
+      const grDetailsToInsert = [];
+      const updatedPoDetailIds = new Set<string>();
+
+      // Pre-aggregate quantities to avoid multiple WHEN clauses for the same ID in the CASE statement
+      for (const detail of payload.details) {
+        const poDetail = poDetailMap.get(detail.purchaseOrderDetailId);
+        if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
+
+        // Batched insertion data
+        grDetailsToInsert.push({
           goodsReceiptId: gr.id,
           purchaseOrderDetailId: detail.purchaseOrderDetailId,
           itemId: detail.itemId,
@@ -185,23 +188,36 @@ export class GoodsReceiptModel {
           updatedBy: userId,
         });
 
-        // Update PO Detail's receivedQuantity
-        const newReceivedQty = poDetail.receivedQuantity + detail.receivedQuantity;
+        // Update in-memory state for later status check and build the CASE statement
+        poDetail.receivedQuantity += detail.receivedQuantity;
+        updatedPoDetailIds.add(detail.purchaseOrderDetailId);
+      }
+
+      if (grDetailsToInsert.length > 0) {
+        // Bolt ⚡ Optimization: Batched bulk insert, reducing N queries to 1 O(1) bulk insert.
+        await tx.insert(goodsReceiptDetails).values(grDetailsToInsert);
+      }
+
+      if (updatedPoDetailIds.size > 0) {
+        let receivedQtyCaseSql = sql`CASE `;
+        for (const id of updatedPoDetailIds) {
+          const poDetail = poDetailMap.get(id);
+          receivedQtyCaseSql = sql`${receivedQtyCaseSql} WHEN ${purchaseOrderDetails.id} = ${id} THEN ${poDetail?.receivedQuantity} `;
+        }
+        receivedQtyCaseSql = sql`${receivedQtyCaseSql} ELSE ${purchaseOrderDetails.receivedQuantity} END`;
+
+        // Bolt ⚡ Optimization: Replaced O(n) individual update statements with a single bulk update using a dynamic CASE statement.
         await tx.update(purchaseOrderDetails)
           .set({
-            receivedQuantity: newReceivedQty,
+            receivedQuantity: receivedQtyCaseSql,
             updatedAt: new Date(),
             updatedBy: userId,
           })
-          .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+          .where(inArray(purchaseOrderDetails.id, Array.from(updatedPoDetailIds)));
       }
 
       // 4. Update PO Status
-      // Check all PO Details to see if fully received
-      const allPoDetails = await tx.query.purchaseOrderDetails.findMany({
-        where: and(eq(purchaseOrderDetails.purchaseOrderId, payload.purchaseOrderId), isNull(purchaseOrderDetails.deletedAt))
-      });
-
+      // We already mutated `allPoDetails` via `poDetailMap`, so we can just check it
       let allFullyReceived = true;
       let someReceived = false;
 
