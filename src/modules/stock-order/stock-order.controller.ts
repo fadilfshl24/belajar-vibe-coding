@@ -12,8 +12,8 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import * as xlsx from "xlsx";
 import { db } from "../../core/db";
 import { itemPlatformSkus } from "../item-platform-sku/item-platform-sku.schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import type { StockOrderInsert, StockOrderItemInsert } from "./stock-order.schema";
+import { and, eq, isNull, sql, inArray } from "drizzle-orm";
+import { stockOrders, type StockOrderInsert, type StockOrderItemInsert } from "./stock-order.schema";
 import { platforms } from "../platform";
 
 const MODULE_TYPE = "STOCK_ORDER";
@@ -159,10 +159,31 @@ export class StockOrderController {
       }
 
       let importedCount = 0;
+
+      // ⚡ Bolt: Prevent O(N) database queries by fetching all existing tracking IDs in a single batched query.
+      // Expectation: Performance is significantly improved by eliminating the N+1 query loop for existing items check,
+      // changing N database calls to 1.
+      const incomingTrackingIds = Array.from(stockOrdersMap.keys());
+      const existingTrackingIds = new Set<string>();
+
+      if (incomingTrackingIds.length > 0) {
+        // Chunk query if there are too many incoming IDs (optional, handled natively up to limits but good for scaling)
+        const existingOrders = await db.select({ trackingId: stockOrders.trackingId })
+          .from(stockOrders)
+          .where(and(
+            inArray(stockOrders.trackingId, incomingTrackingIds),
+            isNull(stockOrders.deletedAt)
+          ));
+
+        for (const order of existingOrders) {
+          existingTrackingIds.add(order.trackingId);
+        }
+      }
+
       await db.transaction(async (trx) => {
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          // O(1) in-memory lookup replaces sequential await StockOrderModel.findByTrackingId(trackingId);
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }
