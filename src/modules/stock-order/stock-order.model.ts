@@ -262,36 +262,49 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    // ⚡ Bolt: N+1 query optimization - batch fetching package details instead of querying per item
+    const itemIds = [...new Set(rawPlatformItems.map((pi) => pi.itemId))];
+    let allPackageDetails: any[] = [];
+    if (itemIds.length > 0) {
+      allPackageDetails = await db
+        .select({
+          packageItemId: itemPackageDetails.packageItemId,
+          id: itemPackageDetails.id,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, itemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        );
+    }
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    // Group package details by packageItemId for O(1) lookups
+    const packageDetailsByItemId = allPackageDetails.reduce((acc, curr) => {
+      if (!acc[curr.packageItemId]) {
+        acc[curr.packageItemId] = [];
+      }
+      // Remove packageItemId from the final detail object to match previous shape
+      const { packageItemId, ...rest } = curr;
+      acc[curr.packageItemId].push(rest);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    const platformItems = rawPlatformItems.map((pi) => ({
+      ...pi,
+      packageDetails: packageDetailsByItemId[pi.itemId] || [],
+    }));
 
     return {
       order: {
