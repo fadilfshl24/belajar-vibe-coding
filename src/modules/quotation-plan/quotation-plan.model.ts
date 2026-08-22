@@ -322,6 +322,12 @@ export class QuotationPlanModel {
   }
 
   private static async handleFinalApproval(tx: any, qp: any, userId: string) {
+    // ⚡ Bolt: Optimize by fetching qpPrs once, outside loops
+    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
+      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
+    });
+    const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
+
     // 1. Group details by vendorId
     const vendorMap = new Map<string, any[]>();
     for (const d of qp.details) {
@@ -352,13 +358,6 @@ export class QuotationPlanModel {
       }).returning();
 
       // We need to link PO to multiple PRs. 
-      // Let's fetch the PRs associated with this QP.
-      const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-        where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-      });
-      
-      const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
-
       if (prIds.length > 0) {
         await tx.insert(purchaseOrderRequests).values(
           prIds.map((prId: any) => ({
@@ -406,24 +405,37 @@ export class QuotationPlanModel {
     }
 
     // 5. Check if all items in PR are fulfilled
-    // Get unique PR IDs connected to this QP
-    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-    });
-    
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (prIds.length > 0) {
+      // ⚡ Bolt: Fetch all PR details for these PRs in a single batched query
+      const uniquePrIds = [...new Set(prIds)] as string[];
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, uniquePrIds)
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const prDetailsMap = new Map<string, any[]>();
+      for (const pd of allPrDetails) {
+        if (!prDetailsMap.has(pd.purchaseRequestId)) {
+          prDetailsMap.set(pd.purchaseRequestId, []);
+        }
+        prDetailsMap.get(pd.purchaseRequestId)!.push(pd);
+      }
 
-      if (isFullyFulfilled) {
+      const fulfilledPrIds: string[] = [];
+      for (const prId of uniquePrIds) {
+        const prDetails = prDetailsMap.get(prId) || [];
+        const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+
+        if (isFullyFulfilled) {
+          fulfilledPrIds.push(prId);
+        }
+      }
+
+      // ⚡ Bolt: Batch update fulfilled PRs
+      if (fulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
           .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
