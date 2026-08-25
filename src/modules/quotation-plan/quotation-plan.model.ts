@@ -411,19 +411,36 @@ export class QuotationPlanModel {
       where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
     });
     
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    const uniquePrIds = [...new Set(qpPrs.map((p: any) => p.purchaseRequestId))];
+    if (uniquePrIds.length > 0) {
+      // ⚡ Bolt: Optimize by fetching all PR details in a single query
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, uniquePrIds as string[])
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      // Group details by PR ID
+      const prDetailsMap = new Map<string, any[]>();
+      for (const d of allPrDetails) {
+        if (!prDetailsMap.has(d.purchaseRequestId)) {
+          prDetailsMap.set(d.purchaseRequestId, []);
+        }
+        prDetailsMap.get(d.purchaseRequestId)!.push(d);
+      }
 
-      if (isFullyFulfilled) {
-        // Status 5 is Complete (as requested by user)
+      const fulfilledPrIds: string[] = [];
+      for (const prId of uniquePrIds) {
+        const prDetails = prDetailsMap.get(prId as string) || [];
+        const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+        if (isFullyFulfilled) {
+          fulfilledPrIds.push(prId as string);
+        }
+      }
+
+      if (fulfilledPrIds.length > 0) {
+        // ⚡ Bolt: Optimize by updating all fulfilled PRs in a single query
         await tx.update(purchaseRequests)
           .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
