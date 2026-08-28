@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2024-08-28 - [N+1 query in stock order item scan]
+**Learning:** [An N+1 query issue inside a `Promise.all` in `scanForOutbound` fetches package details for every scanned item in `rawPlatformItems`. Resolving this involved batching the queries using `inArray` and mapping the details to an in-memory hash map. I had to pay attention to handling empty ID arrays in Drizzle ORM to avoid `inArray` runtime crash on empty arrays, which I did successfully here.]
+**Action:** [Check loops fetching nested dependencies like `packageDetails` or relations per row, especially in outbound/inbound order processing logic, and replace them with bulk ID lookups and hash-mapping for performance wins.]
