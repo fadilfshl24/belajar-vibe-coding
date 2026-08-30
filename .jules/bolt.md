@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2026-08-30 - [Optimize N+1 Query in Handle Final Approval]
+**Learning:** [Pre-aggregating quantities in a Map before building a batched `CASE` statement avoids silent overwrites if multiple inputs map to the same ID]
+**Action:** [Always pre-aggregate mapped values when writing batched SQL `CASE` statements based on array inputs.]

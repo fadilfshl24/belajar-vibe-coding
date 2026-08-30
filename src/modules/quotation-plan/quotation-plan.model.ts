@@ -398,11 +398,26 @@ export class QuotationPlanModel {
       await tx.insert(itemPriceHistories).values(priceHistoryValues);
     }
 
-    // 4. Update PR Details Processed Quantity
-    for (const d of qp.details) {
-      await tx.execute(
-        sql`UPDATE purchase_request_details SET processed_quantity = processed_quantity + ${d.offeredQuantity} WHERE id = ${d.purchaseRequestDetailId}`
-      );
+    // 4. Update PR Details Processed Quantity (Batched)
+    if (qp.details.length > 0) {
+      // Pre-aggregate to avoid silent overwrites
+      const detailAgg = new Map<string, number>();
+      for (const d of qp.details) {
+        detailAgg.set(d.purchaseRequestDetailId, (detailAgg.get(d.purchaseRequestDetailId) || 0) + Number(d.offeredQuantity));
+      }
+
+      const sqlChunks: any[] = [];
+      sqlChunks.push(sql`(CASE id`);
+      for (const [id, qty] of detailAgg.entries()) {
+        sqlChunks.push(sql`WHEN ${id} THEN processed_quantity + ${qty}`);
+      }
+      sqlChunks.push(sql`ELSE processed_quantity END)`);
+      const finalSql = sql.join(sqlChunks, sql.raw(' '));
+
+      const detailIds = Array.from(detailAgg.keys());
+      await tx.update(purchaseRequestDetails)
+        .set({ processedQuantity: finalSql })
+        .where(inArray(purchaseRequestDetails.id, detailIds));
     }
 
     // 5. Check if all items in PR are fulfilled
@@ -411,19 +426,36 @@ export class QuotationPlanModel {
       where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
     });
     
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (qpPrs.length > 0) {
+      const prIds = qpPrs.map((prPivot: any) => prPivot.purchaseRequestId);
+      const uniquePrIds = [...new Set(prIds)];
+
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, uniquePrIds)
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const prDetailsMap = new Map<string, any[]>();
+      for (const detail of allPrDetails) {
+        if (!prDetailsMap.has(detail.purchaseRequestId)) {
+          prDetailsMap.set(detail.purchaseRequestId, []);
+        }
+        prDetailsMap.get(detail.purchaseRequestId)!.push(detail);
+      }
 
-      if (isFullyFulfilled) {
+      const fullyFulfilledPrIds: string[] = [];
+      for (const prId of uniquePrIds) {
+        const detailsForPr = prDetailsMap.get(prId) || [];
+        const isFullyFulfilled = detailsForPr.length > 0 && detailsForPr.every((d: any) => d.processedQuantity >= d.quantity);
+        if (isFullyFulfilled) {
+          fullyFulfilledPrIds.push(prId);
+        }
+      }
+
+      if (fullyFulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
           .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .where(inArray(purchaseRequests.id, fullyFulfilledPrIds));
       }
     }
   }
