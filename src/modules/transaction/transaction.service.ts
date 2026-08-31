@@ -32,6 +32,35 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+  /**
+   * Fetches multiple items in a single query to check if they are locked.
+   * Resolves N+1 queries.
+   */
+  static async getLockedItems(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds || itemIds.length === 0) return new Set();
+
+    const uniqueItemIds = [...new Set(itemIds)];
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, uniqueItemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedPRs.map(pr => pr.itemId));
+  }
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
@@ -39,9 +68,11 @@ export class TransactionService {
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
+      const itemIdsToCheck = txData.items.map(item => String(item.itemId));
+      const lockedItems = await TransactionService.getLockedItems(txData.warehouseId, itemIdsToCheck);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedItems.has(String(item.itemId))) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
