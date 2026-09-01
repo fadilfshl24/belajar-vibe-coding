@@ -333,6 +333,12 @@ export class QuotationPlanModel {
 
     const orderDate = new Date().toISOString().slice(0, 10);
 
+    // Fetch the PRs associated with this QP once before the loop
+    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
+      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
+    });
+    const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
+
     for (const [vendorId, items] of vendorMap.entries()) {
       // 2. Generate PO Draft
       const grandTotal = items.reduce((acc: number, d: any) => acc + Number(d.totalPrice), 0);
@@ -351,14 +357,7 @@ export class QuotationPlanModel {
         createdBy: userId,
       }).returning();
 
-      // We need to link PO to multiple PRs. 
-      // Let's fetch the PRs associated with this QP.
-      const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-        where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-      });
-      
-      const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
-
+      // Link PO to multiple PRs
       if (prIds.length > 0) {
         await tx.insert(purchaseOrderRequests).values(
           prIds.map((prId: any) => ({
@@ -406,24 +405,37 @@ export class QuotationPlanModel {
     }
 
     // 5. Check if all items in PR are fulfilled
-    // Get unique PR IDs connected to this QP
-    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-    });
-    
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (prIds.length > 0) {
+      // Pre-fetch all PR details at once
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, prIds)
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      // Group details by purchaseRequestId
+      const prDetailsMap = new Map<string, any[]>();
+      for (const detail of allPrDetails) {
+        if (!prDetailsMap.has(detail.purchaseRequestId)) {
+          prDetailsMap.set(detail.purchaseRequestId, []);
+        }
+        prDetailsMap.get(detail.purchaseRequestId)!.push(detail);
+      }
 
-      if (isFullyFulfilled) {
+      const fullyFulfilledPrIds: string[] = [];
+
+      for (const prId of prIds) {
+        const details = prDetailsMap.get(prId) || [];
+        const isFullyFulfilled = details.length > 0 && details.every((d: any) => d.processedQuantity >= d.quantity);
+
+        if (isFullyFulfilled) {
+          fullyFulfilledPrIds.push(prId);
+        }
+      }
+
+      if (fullyFulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
-          .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .set({ status: 5, updatedAt: new Date(), updatedBy: userId })
+          .where(inArray(purchaseRequests.id, fullyFulfilledPrIds));
       }
     }
   }
