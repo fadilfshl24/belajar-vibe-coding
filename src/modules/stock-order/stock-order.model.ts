@@ -262,36 +262,52 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    // ⚡ Bolt: Resolve N+1 query for package details using a single batched inArray query
+    const packageItemIds = [...new Set(rawPlatformItems.map(pi => pi.itemId))];
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    let allPackageDetails: any[] = [];
+    if (packageItemIds.length > 0) {
+      allPackageDetails = await db
+        .select({
+          id: itemPackageDetails.id,
+          packageItemId: itemPackageDetails.packageItemId,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, packageItemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        );
+    }
+
+    // Group package details by packageItemId for O(1) lookups
+    const packageDetailsByItemId = allPackageDetails.reduce((acc, pd) => {
+      if (!acc[pd.packageItemId]) {
+        acc[pd.packageItemId] = [];
+      }
+      // Remove packageItemId from final object to match previous output shape exactly
+      const { packageItemId, ...rest } = pd;
+      acc[packageItemId].push(rest);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    const platformItems = rawPlatformItems.map((pi) => {
+      return {
+        ...pi,
+        packageDetails: packageDetailsByItemId[pi.itemId] || [],
+      };
+    });
 
     return {
       order: {
@@ -583,7 +599,7 @@ export class StockOrderModel {
         }
 
         returnItemInserts.push({
-          stockOrderReturnId: returnHeader.id,
+          stockOrderReturnId: returnHeader!.id,
           itemId: itemId,
           itemNameSnapshot: ri.itemNameSnapshot,
           returnedQuantity: ri.returnedQuantity.toString(),
@@ -609,7 +625,7 @@ export class StockOrderModel {
         .where(eq(stockOrders.id, orderId))
         .returning();
 
-      return { order: updated, returnId: returnHeader.id };
+      return { order: updated, returnId: returnHeader!.id };
     });
   }
 
