@@ -32,6 +32,34 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+  /**
+   * ⚡ Bolt: Optimize by grouping N independent queries into a single Promise.all concurrent query
+   * Returns a Set of itemIds that are locked by an Approved Purchase Request.
+   */
+  static async areStocksLocked(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds || itemIds.length === 0) return new Set();
+    const uniqueItemIds = [...new Set(itemIds)];
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, uniqueItemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedPRs.map((pr) => pr.itemId));
+  }
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
@@ -39,9 +67,12 @@ export class TransactionService {
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
+      // ⚡ Bolt: Use O(1) Set lookup via batched fetch to eliminate N+1 DB queries in loop
+      const itemIds = txData.items.map((i) => i.itemId);
+      const lockedItemsSet = await TransactionService.areStocksLocked(txData.warehouseId, itemIds);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedItemsSet.has(item.itemId)) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
