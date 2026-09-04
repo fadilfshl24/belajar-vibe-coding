@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2024-03-20 - [Removed app.log artifact]
+**Learning:** [When running background processes with redirected output (e.g. `> app.log`), it is important to remember to delete those log files before committing to avoid polluting the git history with artifact files.]
+**Action:** [Always double check `git status` for untracked artifacts created during tests or running processes, and `rm` them before committing changes.]
