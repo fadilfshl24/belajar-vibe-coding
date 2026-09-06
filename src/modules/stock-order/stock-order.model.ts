@@ -262,36 +262,48 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    // ⚡ Bolt: Optimize N+1 query by replacing database calls inside loops with batched `inArray` fetch
+    const itemIds = [...new Set(rawPlatformItems.map((pi) => pi.itemId).filter(Boolean))];
+    let allPackageDetails: any[] = [];
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    if (itemIds.length > 0) {
+      allPackageDetails = await db
+        .select({
+          packageItemId: itemPackageDetails.packageItemId,
+          id: itemPackageDetails.id,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, itemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        );
+    }
+
+    const packageDetailsMap = new Map<string, any[]>();
+    for (const detail of allPackageDetails) {
+      if (!packageDetailsMap.has(detail.packageItemId)) {
+        packageDetailsMap.set(detail.packageItemId, []);
+      }
+      const { packageItemId, ...rest } = detail;
+      packageDetailsMap.get(detail.packageItemId)!.push(rest);
+    }
+
+    const platformItems = rawPlatformItems.map((pi) => ({
+      ...pi,
+      packageDetails: packageDetailsMap.get(pi.itemId) || [],
+    }));
 
     return {
       order: {
@@ -337,40 +349,49 @@ export class StockOrderModel {
 
       // 3. Proses setiap item mapping
       const mappingInserts: StockOrderItemMappingInsert[] = [];
-      for (const mapped of payload.mappedItems) {
-        // Lock & cek stok
-        const [stock] = await trx
+      // ⚡ Bolt: Optimize N+1 query by replacing database calls inside loops with batched fetch
+      const mappedItemIds = [...new Set(payload.mappedItems.map(m => m.itemId))];
+
+      let stocks: any[] = [];
+      if (mappedItemIds.length > 0) {
+        stocks = await trx
           .select()
           .from(inventoryStocks)
           .where(
             and(
               eq(inventoryStocks.warehouseId, warehouseId),
-              eq(inventoryStocks.itemId, mapped.itemId),
+              inArray(inventoryStocks.itemId, mappedItemIds),
               isNull(inventoryStocks.deletedAt)
             )
           )
           .for("update");
+      }
+
+      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+
+      // Combine multiple updates into a batched case statement to avoid N+1 updates
+      const updatedStockIds: string[] = [];
+
+      for (const mapped of payload.mappedItems) {
+        const stock = stockMap.get(mapped.itemId);
 
         if (!stock) {
           throw { code: 400, message: `Item (id: ${mapped.itemId}) tidak memiliki stok di gudang ini.` };
         }
+
+        // Mutate stock in memory for correct sequential calculations if duplicate itemIds exist
         if (Number(stock.availableQty) < mapped.quantity) {
           throw {
             code: 400,
             message: `Stok available untuk item (id: ${mapped.itemId}) tidak mencukupi. Tersedia: ${stock.availableQty}, Dibutuhkan: ${mapped.quantity}.`
           };
         }
+        stock.availableQty = Number(stock.availableQty) - mapped.quantity;
+        stock.physicalQty = Number(stock.physicalQty) - mapped.quantity;
 
-        // Kurangi stok
-        await trx
-          .update(inventoryStocks)
-          .set({
-            physicalQty: sql`${inventoryStocks.physicalQty} - ${mapped.quantity}`,
-            availableQty: sql`${inventoryStocks.availableQty} - ${mapped.quantity}`,
-            updatedAt: new Date(),
-            updatedBy: userId,
-          })
-          .where(eq(inventoryStocks.id, stock.id));
+        if (!updatedStockIds.includes(stock.id)) {
+            updatedStockIds.push(stock.id);
+        }
 
         mappingInserts.push({
           stockOrderId: orderId,
@@ -379,6 +400,29 @@ export class StockOrderModel {
           isAutoRestockIfReturn: mapped.isAutoRestockIfReturn,
           createdBy: userId,
         });
+      }
+
+      const physicalQtyCases: any[] = [];
+      const availableQtyCases: any[] = [];
+      for (const stockId of updatedStockIds) {
+          // Find the stock object (using a quick array search, or we could keep a reference map)
+          const stock = Array.from(stockMap.values()).find(s => s.id === stockId);
+          if (stock) {
+              physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stockId} THEN ${stock.physicalQty}`);
+              availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stockId} THEN ${stock.availableQty}`);
+          }
+      }
+
+      if (updatedStockIds.length > 0) {
+        await trx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql`CASE ${sql.join(physicalQtyCases, sql` `)} ELSE ${inventoryStocks.physicalQty} END`,
+            availableQty: sql`CASE ${sql.join(availableQtyCases, sql` `)} ELSE ${inventoryStocks.availableQty} END`,
+            updatedAt: new Date(),
+            updatedBy: userId,
+          })
+          .where(inArray(inventoryStocks.id, [...new Set(updatedStockIds)]));
       }
 
       // 4. Insert mappings
@@ -539,51 +583,70 @@ export class StockOrderModel {
       // 5. Proses setiap item retur
       const returnItemInserts: StockOrderReturnItemInsert[] = [];
 
+      // ⚡ Bolt: Optimize N+1 query by replacing database calls inside loops with batched fetch
+      const restockItemIds = [...new Set(
+        payload.returnItems
+          .map(ri => ri.itemId)
+          .filter(itemId => itemId !== null && restockFlagMap.get(itemId!) === true)
+      )] as string[];
+
+      let stocks: any[] = [];
+      if (restockItemIds.length > 0) {
+        stocks = await trx
+          .select()
+          .from(inventoryStocks)
+          .where(
+            and(
+              eq(inventoryStocks.warehouseId, warehouseId),
+              inArray(inventoryStocks.itemId, restockItemIds),
+              isNull(inventoryStocks.deletedAt)
+            )
+          )
+          .for("update");
+      }
+
+      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+
+      const updatedStockIds: string[] = [];
+      const newStockInserts: any[] = [];
+
       for (const ri of payload.returnItems) {
         const itemId = ri.itemId ?? null;
         const shouldRestock =
-          itemId !== null && (restockFlagMap.get(itemId) === true);
+          itemId !== null && (restockFlagMap.get(itemId!) === true);
         let isRestocked = false;
 
         if (shouldRestock) {
-          // Cari stok, update jika ada, buat baru jika tidak ada
-          const [stock] = await trx
-            .select()
-            .from(inventoryStocks)
-            .where(
-              and(
-                eq(inventoryStocks.warehouseId, warehouseId),
-                eq(inventoryStocks.itemId, itemId!),
-                isNull(inventoryStocks.deletedAt)
-              )
-            )
-            .for("update");
+          const stock = stockMap.get(itemId!);
 
           if (stock) {
-            await trx
-              .update(inventoryStocks)
-              .set({
-                physicalQty: sql`${inventoryStocks.physicalQty} + ${ri.returnedQuantity}`,
-                availableQty: sql`${inventoryStocks.availableQty} + ${ri.returnedQuantity}`,
-                updatedAt: new Date(),
-                updatedBy: userId,
-              })
-              .where(eq(inventoryStocks.id, stock.id));
+            stock.availableQty = Number(stock.availableQty) + ri.returnedQuantity;
+            stock.physicalQty = Number(stock.physicalQty) + ri.returnedQuantity;
+
+            if (!updatedStockIds.includes(stock.id)) {
+                updatedStockIds.push(stock.id);
+            }
           } else {
-            await trx.insert(inventoryStocks).values({
-              warehouseId,
-              itemId: itemId!,
-              physicalQty: ri.returnedQuantity.toString(),
-              availableQty: ri.returnedQuantity.toString(),
-              reservedQty: "0",
-              createdBy: userId,
-            });
+            const existingInsert = newStockInserts.find(i => i.itemId === itemId);
+            if (existingInsert) {
+              existingInsert.physicalQty = (Number(existingInsert.physicalQty) + ri.returnedQuantity).toString();
+              existingInsert.availableQty = (Number(existingInsert.availableQty) + ri.returnedQuantity).toString();
+            } else {
+              newStockInserts.push({
+                warehouseId,
+                itemId: itemId!,
+                physicalQty: ri.returnedQuantity.toString(),
+                availableQty: ri.returnedQuantity.toString(),
+                reservedQty: "0",
+                createdBy: userId,
+              });
+            }
           }
           isRestocked = true;
         }
 
         returnItemInserts.push({
-          stockOrderReturnId: returnHeader.id,
+          stockOrderReturnId: returnHeader!.id,
           itemId: itemId,
           itemNameSnapshot: ri.itemNameSnapshot,
           returnedQuantity: ri.returnedQuantity.toString(),
@@ -591,6 +654,32 @@ export class StockOrderModel {
           notes: ri.notes ?? null,
           createdBy: userId,
         } as StockOrderReturnItemInsert);
+      }
+
+      const physicalQtyCases: any[] = [];
+      const availableQtyCases: any[] = [];
+      for (const stockId of updatedStockIds) {
+          const stock = Array.from(stockMap.values()).find(s => s.id === stockId);
+          if (stock) {
+              physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stockId} THEN ${stock.physicalQty}`);
+              availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stockId} THEN ${stock.availableQty}`);
+          }
+      }
+
+      if (updatedStockIds.length > 0) {
+        await trx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql`CASE ${sql.join(physicalQtyCases, sql` `)} ELSE ${inventoryStocks.physicalQty} END`,
+            availableQty: sql`CASE ${sql.join(availableQtyCases, sql` `)} ELSE ${inventoryStocks.availableQty} END`,
+            updatedAt: new Date(),
+            updatedBy: userId,
+          })
+          .where(inArray(inventoryStocks.id, [...new Set(updatedStockIds)]));
+      }
+
+      if (newStockInserts.length > 0) {
+        await trx.insert(inventoryStocks).values(newStockInserts);
       }
 
       // 6. Insert return items
@@ -609,7 +698,7 @@ export class StockOrderModel {
         .where(eq(stockOrders.id, orderId))
         .returning();
 
-      return { order: updated, returnId: returnHeader.id };
+      return { order: updated, returnId: returnHeader!.id };
     });
   }
 
@@ -621,17 +710,29 @@ export class StockOrderModel {
       if (!order) throw new Error("Order not found");
       if (order.status === "PACKED") throw new Error("Order already packed");
 
-      for (const item of order.items) {
-        const [stock] = await trx
+      // ⚡ Bolt: Optimize N+1 query by replacing database calls inside loops with batched fetch
+      const itemIds = [...new Set(order.items.map(i => i.itemId).filter(Boolean))];
+      let stocks: any[] = [];
+      if (itemIds.length > 0) {
+        stocks = await trx
           .select()
           .from(inventoryStocks)
           .where(
             and(
               eq(inventoryStocks.warehouseId, order.warehouseId),
-              eq(inventoryStocks.itemId, item.itemId),
+              inArray(inventoryStocks.itemId, itemIds as string[]),
               isNull(inventoryStocks.deletedAt)
             )
           );
+      }
+
+      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+      const physicalQtyCases: any[] = [];
+      const availableQtyCases: any[] = [];
+      const updatedStockIds: string[] = [];
+
+      for (const item of order.items) {
+        const stock = stockMap.get(item.itemId);
 
         if (!stock) {
           throw new Error(`Item ${item.itemName} tidak memiliki stok di gudang terpilih.`);
@@ -640,14 +741,23 @@ export class StockOrderModel {
           throw new Error(`Stok available untuk ${item.itemName} tidak mencukupi.`);
         }
 
+        stock.availableQty = Number(stock.availableQty) - Number(item.quantity);
+        stock.physicalQty = Number(stock.physicalQty) - Number(item.quantity);
+
+        physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${stock.physicalQty}`);
+        availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${stock.availableQty}`);
+        updatedStockIds.push(stock.id);
+      }
+
+      if (updatedStockIds.length > 0) {
         await trx
           .update(inventoryStocks)
           .set({
-            physicalQty: sql`${inventoryStocks.physicalQty} - ${item.quantity}`,
-            availableQty: sql`${inventoryStocks.availableQty} - ${item.quantity}`,
+            physicalQty: sql`CASE ${sql.join(physicalQtyCases, sql` `)} ELSE ${inventoryStocks.physicalQty} END`,
+            availableQty: sql`CASE ${sql.join(availableQtyCases, sql` `)} ELSE ${inventoryStocks.availableQty} END`,
             updatedAt: new Date(),
           })
-          .where(eq(inventoryStocks.id, stock.id));
+          .where(inArray(inventoryStocks.id, [...new Set(updatedStockIds)]));
       }
 
       const [updated] = await trx
@@ -668,36 +778,68 @@ export class StockOrderModel {
       if (!order) throw new Error("Order not found");
       if (order.status === "RETURNED") throw new Error("Order already returned");
 
-      for (const item of order.items) {
-        const [stock] = await trx
+      // ⚡ Bolt: Optimize N+1 query by replacing database calls inside loops with batched fetch
+      const itemIds = [...new Set(order.items.map(i => i.itemId).filter(Boolean))];
+      let stocks: any[] = [];
+      if (itemIds.length > 0) {
+        stocks = await trx
           .select()
           .from(inventoryStocks)
           .where(
             and(
               eq(inventoryStocks.warehouseId, order.warehouseId),
-              eq(inventoryStocks.itemId, item.itemId),
+              inArray(inventoryStocks.itemId, itemIds as string[]),
               isNull(inventoryStocks.deletedAt)
             )
           );
+      }
+
+      const stockMap = new Map(stocks.map(s => [s.itemId, s]));
+      const physicalQtyCases: any[] = [];
+      const availableQtyCases: any[] = [];
+      const updatedStockIds: string[] = [];
+      const newStockInserts: any[] = [];
+
+      for (const item of order.items) {
+        const stock = stockMap.get(item.itemId);
 
         if (stock) {
-          await trx
-            .update(inventoryStocks)
-            .set({
-              physicalQty: sql`${inventoryStocks.physicalQty} + ${item.quantity}`,
-              availableQty: sql`${inventoryStocks.availableQty} + ${item.quantity}`,
-              updatedAt: new Date(),
-            })
-            .where(eq(inventoryStocks.id, stock.id));
+          stock.availableQty = Number(stock.availableQty) + Number(item.quantity);
+          stock.physicalQty = Number(stock.physicalQty) + Number(item.quantity);
+
+          physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${stock.physicalQty}`);
+          availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${stock.availableQty}`);
+          updatedStockIds.push(stock.id);
         } else {
-          await trx.insert(inventoryStocks).values({
-            warehouseId: order.warehouseId,
-            itemId: item.itemId,
-            physicalQty: item.quantity.toString(),
-            availableQty: item.quantity.toString(),
-            reservedQty: "0",
-          });
+          const existingInsert = newStockInserts.find(i => i.itemId === item.itemId);
+          if (existingInsert) {
+            existingInsert.physicalQty = (Number(existingInsert.physicalQty) + Number(item.quantity)).toString();
+            existingInsert.availableQty = (Number(existingInsert.availableQty) + Number(item.quantity)).toString();
+          } else {
+            newStockInserts.push({
+              warehouseId: order.warehouseId,
+              itemId: item.itemId,
+              physicalQty: item.quantity.toString(),
+              availableQty: item.quantity.toString(),
+              reservedQty: "0",
+            });
+          }
         }
+      }
+
+      if (updatedStockIds.length > 0) {
+        await trx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql`CASE ${sql.join(physicalQtyCases, sql` `)} ELSE ${inventoryStocks.physicalQty} END`,
+            availableQty: sql`CASE ${sql.join(availableQtyCases, sql` `)} ELSE ${inventoryStocks.availableQty} END`,
+            updatedAt: new Date(),
+          })
+          .where(inArray(inventoryStocks.id, [...new Set(updatedStockIds)]));
+      }
+
+      if (newStockInserts.length > 0) {
+        await trx.insert(inventoryStocks).values(newStockInserts);
       }
 
       const [updated] = await trx
