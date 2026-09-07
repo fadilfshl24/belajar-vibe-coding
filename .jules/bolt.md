@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2026-09-07 - [Fixing N+1 Queries on Promise.all Mapping]
+**Learning:** Promise.all with embedded queries creates concurrent N+1 roundtrips to the database which can overwhelm the connection pool and slow down request execution on large arrays.
+**Action:** Replace Promise.all db reads with batched `inArray` queries, checking for empty arrays first to avoid Drizzle ORM errors, and utilizing Sets to deduplicate query parameters. Also ensure TypeScript type inferences are used optimally instead of casting to `any`.
