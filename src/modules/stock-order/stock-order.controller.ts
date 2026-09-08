@@ -12,8 +12,12 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import * as xlsx from "xlsx";
 import { db } from "../../core/db";
 import { itemPlatformSkus } from "../item-platform-sku/item-platform-sku.schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import type { StockOrderInsert, StockOrderItemInsert } from "./stock-order.schema";
+import { and, eq, isNull, sql, inArray } from "drizzle-orm";
+import { stockOrders } from "./stock-order.schema";
+import type {
+  StockOrderInsert,
+  StockOrderItemInsert,
+} from "./stock-order.schema";
 import { platforms } from "../platform";
 
 const MODULE_TYPE = "STOCK_ORDER";
@@ -22,7 +26,9 @@ export class StockOrderController {
   // ── IMPORT EXCEL ────────────────────────────────────────────────────────────
 
   static async importExcel(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
 
     if (!userId) {
@@ -31,12 +37,21 @@ export class StockOrderController {
     }
 
     try {
-      const body = ctx.body as { file: File; warehouseId: string; purchaseChannel: string };
+      const body = ctx.body as {
+        file: File;
+        warehouseId: string;
+        purchaseChannel: string;
+      };
       const parsed = parseImportStockOrder(body);
 
       if (!parsed.success) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Invalid input data", 400, parsed.error.issues[0]?.message);
+        return failedResponse(
+          correlationId,
+          "Invalid input data",
+          400,
+          parsed.error.issues[0]?.message,
+        );
       }
 
       if (!body.file || !(body.file instanceof File)) {
@@ -47,7 +62,9 @@ export class StockOrderController {
       const { warehouseId, purchaseChannel } = parsed.data;
 
       const arrayBuffer = await body.file.arrayBuffer();
-      const workbook = xlsx.read(new Uint8Array(arrayBuffer), { type: "array" });
+      const workbook = xlsx.read(new Uint8Array(arrayBuffer), {
+        type: "array",
+      });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName ?? ""];
 
@@ -63,37 +80,66 @@ export class StockOrderController {
         return failedResponse(correlationId, "Excel file is empty", 400);
       }
 
-      const [platform] = await db.select().from(platforms).where(
-        sql`UPPER(${platforms.code}) = ${purchaseChannel.toUpperCase()}`
-      ).limit(1);
+      const [platform] = await db
+        .select()
+        .from(platforms)
+        .where(sql`UPPER(${platforms.code}) = ${purchaseChannel.toUpperCase()}`)
+        .limit(1);
 
       if (!platform) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, `Platform ${purchaseChannel} tidak ditemukan`, 400);
+        return failedResponse(
+          correlationId,
+          `Platform ${purchaseChannel} tidak ditemukan`,
+          400,
+        );
       }
 
-      const allSkus = await db.select().from(itemPlatformSkus)
-        .where(and(eq(itemPlatformSkus.platformId, platform.id), isNull(itemPlatformSkus.deletedAt)));
+      const allSkus = await db
+        .select()
+        .from(itemPlatformSkus)
+        .where(
+          and(
+            eq(itemPlatformSkus.platformId, platform.id),
+            isNull(itemPlatformSkus.deletedAt),
+          ),
+        );
 
-      const skuMap = new Map(allSkus.map(s => [s.platformSku.toUpperCase(), s.itemId]));
+      const skuMap = new Map(
+        allSkus.map((s) => [s.platformSku.toUpperCase(), s.itemId]),
+      );
 
-      const stockOrdersMap = new Map<string, { order: StockOrderInsert; items: StockOrderItemInsert[] }>();
+      const stockOrdersMap = new Map<
+        string,
+        { order: StockOrderInsert; items: StockOrderItemInsert[] }
+      >();
 
       for (const row of jsonData) {
-        let orderId = "", trackingId = "", skuId = "", skuName = "", paymentMethod = "", 
-        shippingProviderName = "", buyerUsername = "", recipient = "", phone = "", 
-        createdAt = "", paidAt = "", rtsAt = "",
-        sellerNote = "";
+        let orderId = "",
+          trackingId = "",
+          skuId = "",
+          skuName = "",
+          paymentMethod = "",
+          shippingProviderName = "",
+          buyerUsername = "",
+          recipient = "",
+          phone = "",
+          createdAt = "",
+          paidAt = "",
+          rtsAt = "",
+          sellerNote = "";
         let quantity = 0;
 
         if (purchaseChannel === "TikTok") {
           orderId = row["Order ID"]?.toString() || "";
           trackingId = row["Tracking ID"]?.toString() || "";
-          skuId = row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
+          skuId =
+            row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
           skuName = row["Product Name"]?.toString() || "";
           quantity = Number(row["Quantity"]) || 0;
           paymentMethod = row["Payment Method"]?.toString() || null;
-          shippingProviderName = row["Shipping Provider Name"]?.toString() || null;
+          shippingProviderName =
+            row["Shipping Provider Name"]?.toString() || null;
           buyerUsername = row["Buyer Username"]?.toString() || null;
           recipient = row["Recipient"]?.toString() || null;
           phone = row["Phone #"]?.toString() || null;
@@ -102,10 +148,18 @@ export class StockOrderController {
           paidAt = row["Paid Time"]?.toString() || null;
           rtsAt = row["RTS Time"]?.toString() || null;
         } else {
-          orderId = row["Order ID"]?.toString() || row["order_id"]?.toString() || "";
-          trackingId = row["Tracking ID"]?.toString() || row["tracking_id"]?.toString() || row["Resi"]?.toString() || "";
+          orderId =
+            row["Order ID"]?.toString() || row["order_id"]?.toString() || "";
+          trackingId =
+            row["Tracking ID"]?.toString() ||
+            row["tracking_id"]?.toString() ||
+            row["Resi"]?.toString() ||
+            "";
           skuId = row["SKU ID"]?.toString() || row["sku"]?.toString() || "";
-          skuName = row["Product Name"]?.toString() || row["product_name"]?.toString() || "";
+          skuName =
+            row["Product Name"]?.toString() ||
+            row["product_name"]?.toString() ||
+            "";
           quantity = Number(row["Quantity"]) || Number(row["quantity"]) || 0;
         }
 
@@ -115,7 +169,11 @@ export class StockOrderController {
 
         if (!itemId) {
           ctx.set.status = 400;
-          return failedResponse(correlationId, `SKU ${skuId} (${skuName}) belum di-mapping di sistem.`, 400);
+          return failedResponse(
+            correlationId,
+            `SKU ${skuId} (${skuName}) belum di-mapping di sistem.`,
+            400,
+          );
         }
 
         const parseDate = (val: any): Date | null => {
@@ -153,16 +211,36 @@ export class StockOrderController {
           itemId,
           skuId,
           skuName,
-          skuPrice: row["SKU Unit Original Price"] ? Number(row["SKU Unit Original Price"]).toString() : null,
+          skuPrice: row["SKU Unit Original Price"]
+            ? Number(row["SKU Unit Original Price"]).toString()
+            : null,
           quantity: quantity.toString(),
         });
       }
 
       let importedCount = 0;
+
+      // ⚡ Bolt: Resolve N+1 queries by pre-fetching existing tracking IDs with a single batched query
+      const trackingIds = Array.from(stockOrdersMap.keys());
+      let existingTrackingIds = new Set<string>();
+
+      if (trackingIds.length > 0) {
+        const existingRecords = await db
+          .select({ trackingId: stockOrders.trackingId })
+          .from(stockOrders)
+          .where(
+            and(
+              inArray(stockOrders.trackingId, trackingIds),
+              isNull(stockOrders.deletedAt),
+            ),
+          );
+
+        existingTrackingIds = new Set(existingRecords.map((r) => r.trackingId));
+      }
+
       await db.transaction(async (trx) => {
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }
@@ -175,24 +253,41 @@ export class StockOrderController {
         description: `Imported ${importedCount} orders for ${purchaseChannel}`,
       });
 
-      return successResponse(correlationId, "Import berhasil", { importedCount });
+      return successResponse(correlationId, "Import berhasil", {
+        importedCount,
+      });
     } catch (error: any) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Internal server error", 500, error.message);
+      return failedResponse(
+        correlationId,
+        "Internal server error",
+        500,
+        error.message,
+      );
     }
   }
 
   static async previewImport(ctx: Context & { user?: JwtPayload }) {
     const correlationId =
-      (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
 
     try {
-      const body = ctx.body as { file?: File; purchaseChannel?: string; warehouseId?: string };
+      const body = ctx.body as {
+        file?: File;
+        purchaseChannel?: string;
+        warehouseId?: string;
+      };
       const parsed = parseImportStockOrder(body);
 
       if (!parsed.success) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Invalid parameters", 400, parsed.error.format());
+        return failedResponse(
+          correlationId,
+          "Invalid parameters",
+          400,
+          parsed.error.format(),
+        );
       }
 
       if (!body.file || !(body.file instanceof File)) {
@@ -203,7 +298,9 @@ export class StockOrderController {
       const { purchaseChannel } = parsed.data;
 
       const arrayBuffer = await body.file.arrayBuffer();
-      const workbook = xlsx.read(new Uint8Array(arrayBuffer), { type: "array" });
+      const workbook = xlsx.read(new Uint8Array(arrayBuffer), {
+        type: "array",
+      });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName ?? ""];
 
@@ -219,19 +316,34 @@ export class StockOrderController {
         return failedResponse(correlationId, "Excel file is empty", 400);
       }
 
-      const [platform] = await db.select().from(platforms).where(
-        sql`UPPER(${platforms.code}) = ${purchaseChannel.toUpperCase()}`
-      ).limit(1);
+      const [platform] = await db
+        .select()
+        .from(platforms)
+        .where(sql`UPPER(${platforms.code}) = ${purchaseChannel.toUpperCase()}`)
+        .limit(1);
 
       if (!platform) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, `Platform ${purchaseChannel} tidak ditemukan`, 400);
+        return failedResponse(
+          correlationId,
+          `Platform ${purchaseChannel} tidak ditemukan`,
+          400,
+        );
       }
 
-      const allSkus = await db.select().from(itemPlatformSkus)
-        .where(and(eq(itemPlatformSkus.platformId, platform.id), isNull(itemPlatformSkus.deletedAt)));
+      const allSkus = await db
+        .select()
+        .from(itemPlatformSkus)
+        .where(
+          and(
+            eq(itemPlatformSkus.platformId, platform.id),
+            isNull(itemPlatformSkus.deletedAt),
+          ),
+        );
 
-      const skuMap = new Map(allSkus.map(s => [s.platformSku.toUpperCase(), s.itemId]));
+      const skuMap = new Map(
+        allSkus.map((s) => [s.platformSku.toUpperCase(), s.itemId]),
+      );
 
       const trackingIds = new Set<string>();
       const unmappedSkus: string[] = [];
@@ -242,9 +354,14 @@ export class StockOrderController {
 
         if (purchaseChannel === "TikTok") {
           trackingId = row["Tracking ID"]?.toString() || "";
-          skuId = row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
+          skuId =
+            row["SKU ID"]?.toString() || row["Seller SKU"]?.toString() || "";
         } else {
-          trackingId = row["Tracking ID"]?.toString() || row["tracking_id"]?.toString() || row["Resi"]?.toString() || "";
+          trackingId =
+            row["Tracking ID"]?.toString() ||
+            row["tracking_id"]?.toString() ||
+            row["Resi"]?.toString() ||
+            "";
           skuId = row["SKU ID"]?.toString() || row["sku"]?.toString() || "";
         }
 
@@ -260,7 +377,11 @@ export class StockOrderController {
 
       if (unmappedSkus.length > 0) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, `Terdapat SKU belum di-mapping: ${unmappedSkus.join(", ")}`, 400);
+        return failedResponse(
+          correlationId,
+          `Terdapat SKU belum di-mapping: ${unmappedSkus.join(", ")}`,
+          400,
+        );
       }
 
       const totalResi = trackingIds.size;
@@ -271,20 +392,32 @@ export class StockOrderController {
       });
     } catch (error: any) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Failed to preview import file", 500, error.message);
+      return failedResponse(
+        correlationId,
+        "Failed to preview import file",
+        500,
+        error.message,
+      );
     }
   }
 
   // ── LIST ────────────────────────────────────────────────────────────────────
 
   static async list(ctx: Context) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
 
     try {
       const parsed = parseListStockOrderQuery(ctx.query);
       if (!parsed.success) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Invalid query parameters", 400, parsed.error.issues[0]?.message);
+        return failedResponse(
+          correlationId,
+          "Invalid query parameters",
+          400,
+          parsed.error.issues[0]?.message,
+        );
       }
 
       const { data, count } = await StockOrderModel.findAll(parsed.data);
@@ -307,14 +440,21 @@ export class StockOrderController {
       });
     } catch (error: any) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Internal server error", 500, error.message);
+      return failedResponse(
+        correlationId,
+        "Internal server error",
+        500,
+        error.message,
+      );
     }
   }
 
   // ── GET BY TRACKING ID (legacy) ─────────────────────────────────────────────
 
   static async getByTrackingId(ctx: Context) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const { trackingId } = ctx.params as { trackingId: string };
 
     try {
@@ -326,7 +466,12 @@ export class StockOrderController {
       return successResponse(correlationId, "Success get data", order);
     } catch (error: any) {
       ctx.set.status = 500;
-      return failedResponse(correlationId, "Internal server error", 500, error.message);
+      return failedResponse(
+        correlationId,
+        "Internal server error",
+        500,
+        error.message,
+      );
     }
   }
 
@@ -337,7 +482,9 @@ export class StockOrderController {
    * Scan resi untuk outbound. Returns data resi + platform items + available stock.
    */
   static async scanOutbound(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { trackingId } = ctx.params as { trackingId: string };
 
@@ -352,7 +499,12 @@ export class StockOrderController {
     } catch (error: any) {
       const code = error?.code ?? 400;
       ctx.set.status = 200;
-      return failedResponse(correlationId, error?.message ?? "Internal server error", code, error?.data);
+      return failedResponse(
+        correlationId,
+        error?.message ?? "Internal server error",
+        code,
+        error?.data,
+      );
     }
   }
 
@@ -363,7 +515,9 @@ export class StockOrderController {
    * Konfirmasi packing dengan item mapping fisik.
    */
   static async packWithMapping(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { id } = ctx.params as { id: string };
 
@@ -376,10 +530,19 @@ export class StockOrderController {
       const parsed = parsePackWithMapping(ctx.body);
       if (!parsed.success) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Invalid request body", 400, parsed.error.issues[0]?.message);
+        return failedResponse(
+          correlationId,
+          "Invalid request body",
+          400,
+          parsed.error.issues[0]?.message,
+        );
       }
 
-      const updated = await StockOrderModel.packWithMapping(id, userId, parsed.data);
+      const updated = await StockOrderModel.packWithMapping(
+        id,
+        userId,
+        parsed.data,
+      );
 
       await logActivity({
         userId,
@@ -392,7 +555,11 @@ export class StockOrderController {
     } catch (error: any) {
       const code = error?.code ?? 400;
       ctx.set.status = code;
-      return failedResponse(correlationId, error?.message ?? "Gagal packing", code);
+      return failedResponse(
+        correlationId,
+        error?.message ?? "Gagal packing",
+        code,
+      );
     }
   }
 
@@ -403,7 +570,9 @@ export class StockOrderController {
    * Scan resi untuk inbound return. Returns data resi + item mappings dari outbound.
    */
   static async scanInbound(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { trackingId } = ctx.params as { trackingId: string };
 
@@ -418,7 +587,12 @@ export class StockOrderController {
     } catch (error: any) {
       const code = error?.code ?? 400;
       ctx.set.status = 200;
-      return failedResponse(correlationId, error?.message ?? "Internal server error", code, error?.data);
+      return failedResponse(
+        correlationId,
+        error?.message ?? "Internal server error",
+        code,
+        error?.data,
+      );
     }
   }
 
@@ -429,7 +603,9 @@ export class StockOrderController {
    * Proses parsial return dengan bukti foto.
    */
   static async processReturn(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { id } = ctx.params as { id: string };
 
@@ -442,10 +618,19 @@ export class StockOrderController {
       const parsed = parseProcessReturn(ctx.body);
       if (!parsed.success) {
         ctx.set.status = 400;
-        return failedResponse(correlationId, "Invalid request body", 400, parsed.error.issues[0]?.message);
+        return failedResponse(
+          correlationId,
+          "Invalid request body",
+          400,
+          parsed.error.issues[0]?.message,
+        );
       }
 
-      const result = await StockOrderModel.processReturn(id, userId, parsed.data);
+      const result = await StockOrderModel.processReturn(
+        id,
+        userId,
+        parsed.data,
+      );
 
       await logActivity({
         userId,
@@ -458,14 +643,20 @@ export class StockOrderController {
     } catch (error: any) {
       const code = error?.code ?? 400;
       ctx.set.status = code;
-      return failedResponse(correlationId, error?.message ?? "Gagal proses return", code);
+      return failedResponse(
+        correlationId,
+        error?.message ?? "Gagal proses return",
+        code,
+      );
     }
   }
 
   // ── PACK ORDER (legacy) ─────────────────────────────────────────────────────
 
   static async packOrder(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { id } = ctx.params as { id: string };
 
@@ -484,7 +675,11 @@ export class StockOrderController {
         description: `Packer order ${updated?.trackingId}`,
       });
 
-      return successResponse(correlationId, "Order packed successfully", updated);
+      return successResponse(
+        correlationId,
+        "Order packed successfully",
+        updated,
+      );
     } catch (error: any) {
       ctx.set.status = 400;
       return failedResponse(correlationId, error.message, 400);
@@ -494,7 +689,9 @@ export class StockOrderController {
   // ── RETURN ORDER (legacy) ───────────────────────────────────────────────────
 
   static async returnOrder(ctx: Context & { user?: JwtPayload }) {
-    const correlationId = (ctx.headers["x-correlation-id"] as string | undefined) ?? crypto.randomUUID();
+    const correlationId =
+      (ctx.headers["x-correlation-id"] as string | undefined) ??
+      crypto.randomUUID();
     const userId = ctx.user?.sub;
     const { id } = ctx.params as { id: string };
 
@@ -513,7 +710,11 @@ export class StockOrderController {
         description: `Returned order ${updated?.trackingId}`,
       });
 
-      return successResponse(correlationId, "Order returned successfully", updated);
+      return successResponse(
+        correlationId,
+        "Order returned successfully",
+        updated,
+      );
     } catch (error: any) {
       ctx.set.status = 400;
       return failedResponse(correlationId, error.message, 400);
