@@ -333,6 +333,13 @@ export class QuotationPlanModel {
 
     const orderDate = new Date().toISOString().slice(0, 10);
 
+    // We need to link PO to multiple PRs.
+    // Fetch the PRs associated with this QP once.
+    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
+      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
+    });
+    const prIds = Array.from(new Set(qpPrs.map((p: any) => String(p.purchaseRequestId))));
+
     for (const [vendorId, items] of vendorMap.entries()) {
       // 2. Generate PO Draft
       const grandTotal = items.reduce((acc: number, d: any) => acc + Number(d.totalPrice), 0);
@@ -350,14 +357,6 @@ export class QuotationPlanModel {
         description: `Generated from Quotation Plan: ${qp.code}`,
         createdBy: userId,
       }).returning();
-
-      // We need to link PO to multiple PRs. 
-      // Let's fetch the PRs associated with this QP.
-      const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-        where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-      });
-      
-      const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
 
       if (prIds.length > 0) {
         await tx.insert(purchaseOrderRequests).values(
@@ -398,32 +397,59 @@ export class QuotationPlanModel {
       await tx.insert(itemPriceHistories).values(priceHistoryValues);
     }
 
-    // 4. Update PR Details Processed Quantity
+    // 4. Update PR Details Processed Quantity in bulk
+    const prDetailsUpdates = new Map<string, number>();
     for (const d of qp.details) {
-      await tx.execute(
-        sql`UPDATE purchase_request_details SET processed_quantity = processed_quantity + ${d.offeredQuantity} WHERE id = ${d.purchaseRequestDetailId}`
-      );
+      if (!d.purchaseRequestDetailId) continue;
+      prDetailsUpdates.set(d.purchaseRequestDetailId, (prDetailsUpdates.get(d.purchaseRequestDetailId) || 0) + Number(d.offeredQuantity));
+    }
+
+    if (prDetailsUpdates.size > 0) {
+      const sqlChunks: any[] = [];
+      sqlChunks.push(sql`CASE id`);
+      for (const [id, qty] of prDetailsUpdates.entries()) {
+        sqlChunks.push(sql`WHEN ${id} THEN processed_quantity + ${qty}`);
+      }
+      sqlChunks.push(sql`END`);
+
+      const updateCaseSql = sql.join(sqlChunks, sql` `);
+      const prDetailIdsToUpdate = Array.from(prDetailsUpdates.keys());
+
+      await tx.update(purchaseRequestDetails)
+        .set({ processedQuantity: updateCaseSql })
+        .where(inArray(purchaseRequestDetails.id, prDetailIdsToUpdate));
     }
 
     // 5. Check if all items in PR are fulfilled
-    // Get unique PR IDs connected to this QP
-    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-    });
-    
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (prIds.length > 0) {
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, prIds as string[])
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const prDetailsMap = new Map<string, any[]>();
+      for (const detail of allPrDetails) {
+        if (!prDetailsMap.has(detail.purchaseRequestId)) {
+          prDetailsMap.set(detail.purchaseRequestId, []);
+        }
+        prDetailsMap.get(detail.purchaseRequestId)!.push(detail);
+      }
 
-      if (isFullyFulfilled) {
+      const fulfilledPrIds: string[] = [];
+      for (const prId of prIds as string[]) {
+        const details = prDetailsMap.get(prId);
+        if (details && details.length > 0) {
+          const isFullyFulfilled = details.every((d: any) => Number(d.processedQuantity) >= Number(d.quantity));
+          if (isFullyFulfilled) {
+            fulfilledPrIds.push(prId as string);
+          }
+        }
+      }
+
+      if (fulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
-          .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .set({ status: 5, updatedAt: new Date(), updatedBy: userId })
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
