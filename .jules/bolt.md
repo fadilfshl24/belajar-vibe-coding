@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-05-18 - [Empty Array Edge Case in Drizzle ORM inArray]
+**Learning:** When using Drizzle ORM's `inArray` operator to resolve N+1 queries, passing an empty array to it (e.g. `inArray(col, [])`) triggers a fatal runtime error instead of resolving to a no-op or empty result set.
+**Action:** Always wrap `inArray` queries with an explicit check `if (arr.length > 0) { ... }` or handle empty states gracefully before passing the array to Drizzle.
