@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-05-30 - [Batched Drizzle Update Strategy Optimization]
+**Learning:** [When dealing with bulk updates resulting from user inputs that might target the same database ID multiple times, simply using a CASE statement directly mapped from raw input is prone to errors. Aggregating updates in an in-memory Map first correctly sums up incremental changes and prepares an accurate state to map to the CASE SQL injection, and prevents repetitive lookup queries on checking aggregate status]
+**Action:** [Always aggregate changes in memory using a Map/Set before constructing the final \`sql.join\` CASE statement array. This ensures Drizzle issues the correct aggregated value to the DB without concurrency race-conditions.]
