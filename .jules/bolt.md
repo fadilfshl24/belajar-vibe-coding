@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2023-10-27 - Drizzle ORM N+1 Batched Query Type Safety
+**Learning:** Assigning Drizzle ORM batched query results (using `inArray`) to a mutable array initialized as `let results: any[] = [];` destroys TypeScript type inference and compromises type safety.
+**Action:** When resolving N+1 queries in Drizzle by batching, always use ternary operators or properly typed arrays (e.g., extracting the query type) instead of defaulting to `any[]` so that downstream mapping logic retains its type integrity.
