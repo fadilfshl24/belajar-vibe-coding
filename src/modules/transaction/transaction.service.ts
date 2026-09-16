@@ -32,6 +32,35 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+  /**
+   * Batch resolves locked stock statuses for multiple items.
+   * Returns a Set of item IDs that are locked.
+   */
+  static async getLockedStocks(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds.length) return new Set();
+
+    const uniqueItemIds = Array.from(new Set(itemIds.map(id => String(id))));
+
+    const lockedItems = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, uniqueItemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedItems.map(row => String(row.itemId)));
+  }
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
@@ -39,9 +68,11 @@ export class TransactionService {
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
+      const allItemIds = txData.items.map(item => item.itemId);
+      const lockedItemsSet = await TransactionService.getLockedStocks(txData.warehouseId, allItemIds);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedItemsSet.has(String(item.itemId))) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
