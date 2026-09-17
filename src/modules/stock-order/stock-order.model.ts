@@ -262,36 +262,58 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    const uniqueItemIds = [...new Set(rawPlatformItems.map(pi => pi.itemId))];
+    let allPackageDetails: any[] = [];
+    if (uniqueItemIds.length > 0) {
+      allPackageDetails = await db
+        .select({
+          packageItemId: itemPackageDetails.packageItemId,
+          id: itemPackageDetails.id,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, uniqueItemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        );
+    }
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    const packageDetailsMap = new Map<string, any[]>();
+    for (const detail of allPackageDetails) {
+      const packageItemId = detail.packageItemId;
+      if (!packageItemId) continue;
+
+      const existing = packageDetailsMap.get(packageItemId) || [];
+      existing.push({
+        id: detail.id,
+        childItemId: detail.childItemId,
+        childItemCode: detail.childItemCode,
+        childItemName: detail.childItemName,
+        quantity: detail.quantity,
+        uomName: detail.uomName,
+        uomCode: detail.uomCode,
+        categoryName: detail.categoryName,
+      });
+      packageDetailsMap.set(packageItemId, existing);
+    }
+
+    const platformItems = rawPlatformItems.map((pi) => {
+      return {
+        ...pi,
+        packageDetails: packageDetailsMap.get(pi.itemId) || [],
+      };
+    });
 
     return {
       order: {

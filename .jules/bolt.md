@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2026-09-17 - [Fixing N+1 Queries on Stock Order Platform Items Processing]
+**Learning:** In `src/modules/stock-order/stock-order.model.ts`, iterating through platform items to sequentially fetch package details nested in `Promise.all(rawPlatformItems.map(...))` triggers N+1 reads.
+**Action:** Replaced sequential database fetches inside a loop with a bulk `inArray` read grouped using an in-memory `Map` keyed by the nested entity's parent ID (`packageItemId`), achieving O(1) assignment and resolving N queries to a single query.
