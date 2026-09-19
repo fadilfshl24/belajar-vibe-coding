@@ -333,6 +333,12 @@ export class QuotationPlanModel {
 
     const orderDate = new Date().toISOString().slice(0, 10);
 
+    // Fetch the PRs associated with this QP once to avoid querying in a loop
+    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
+      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
+    });
+    const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
+
     for (const [vendorId, items] of vendorMap.entries()) {
       // 2. Generate PO Draft
       const grandTotal = items.reduce((acc: number, d: any) => acc + Number(d.totalPrice), 0);
@@ -352,13 +358,6 @@ export class QuotationPlanModel {
       }).returning();
 
       // We need to link PO to multiple PRs. 
-      // Let's fetch the PRs associated with this QP.
-      const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-        where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-      });
-      
-      const prIds = qpPrs.map((p: any) => p.purchaseRequestId);
-
       if (prIds.length > 0) {
         await tx.insert(purchaseOrderRequests).values(
           prIds.map((prId: any) => ({
@@ -398,32 +397,53 @@ export class QuotationPlanModel {
       await tx.insert(itemPriceHistories).values(priceHistoryValues);
     }
 
-    // 4. Update PR Details Processed Quantity
-    for (const d of qp.details) {
-      await tx.execute(
-        sql`UPDATE purchase_request_details SET processed_quantity = processed_quantity + ${d.offeredQuantity} WHERE id = ${d.purchaseRequestDetailId}`
-      );
+    // 4. Update PR Details Processed Quantity in bulk
+    if (qp.details.length > 0) {
+      const detailQtyMap = new Map<string, number>();
+      for (const d of qp.details) {
+        detailQtyMap.set(d.purchaseRequestDetailId, (detailQtyMap.get(d.purchaseRequestDetailId) || 0) + d.offeredQuantity);
+      }
+
+      const sqlChunks: any[] = [sql`(CASE`];
+      for (const [detailId, qty] of detailQtyMap.entries()) {
+        sqlChunks.push(sql`WHEN id = ${detailId} THEN processed_quantity + ${qty}`);
+      }
+      sqlChunks.push(sql`END)`);
+
+      const finalSql = sql.join(sqlChunks, sql.raw(' '));
+      const detailIds = Array.from(detailQtyMap.keys());
+
+      await tx.update(purchaseRequestDetails)
+        .set({ processedQuantity: finalSql as any })
+        .where(inArray(purchaseRequestDetails.id, detailIds));
     }
 
     // 5. Check if all items in PR are fulfilled
-    // Get unique PR IDs connected to this QP
-    const qpPrs = await tx.query.quotationPlanPurchaseRequests.findMany({
-      where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
-    });
-    
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (prIds.length > 0) {
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, prIds)
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const prDetailsMap = new Map<string, any[]>();
+      for (const d of allPrDetails) {
+        if (!prDetailsMap.has(d.purchaseRequestId)) prDetailsMap.set(d.purchaseRequestId, []);
+        prDetailsMap.get(d.purchaseRequestId)!.push(d);
+      }
 
-      if (isFullyFulfilled) {
+      const fulfilledPrIds: string[] = [];
+      for (const prId of prIds) {
+        const details = prDetailsMap.get(prId) || [];
+        const isFullyFulfilled = details.length > 0 && details.every((d: any) => d.processedQuantity >= d.quantity);
+        if (isFullyFulfilled) {
+          fulfilledPrIds.push(prId);
+        }
+      }
+
+      if (fulfilledPrIds.length > 0) {
         // Status 5 is Complete (as requested by user)
         await tx.update(purchaseRequests)
-          .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .set({ status: 5, updatedAt: new Date(), updatedBy: userId })
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
