@@ -262,36 +262,67 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    // ⚡ Bolt: Optimize by replacing N+1 queries with a single query and in-memory Map
+    const platformItemIds = [...new Set(rawPlatformItems.map(pi => pi.itemId))];
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    let allPackageDetails: Array<{
+      id: string;
+      packageItemId: string;
+      childItemId: string;
+      childItemCode: string;
+      childItemName: string;
+      quantity: string;
+      uomName: string | null;
+      uomCode: string | null;
+      categoryName: string | null;
+    }> = [];
+    if (platformItemIds.length > 0) {
+      allPackageDetails = await db
+        .select({
+          id: itemPackageDetails.id,
+          packageItemId: itemPackageDetails.packageItemId,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, platformItemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        );
+    }
+
+    const packageDetailsMap = new Map<string, Omit<typeof allPackageDetails[0], "packageItemId">[]>();
+    for (const detail of allPackageDetails) {
+      const packageItemId = detail.packageItemId;
+      if (!packageDetailsMap.has(packageItemId)) {
+        packageDetailsMap.set(packageItemId, []);
+      }
+      packageDetailsMap.get(packageItemId)!.push({
+        id: detail.id,
+        childItemId: detail.childItemId,
+        childItemCode: detail.childItemCode,
+        childItemName: detail.childItemName,
+        quantity: detail.quantity,
+        uomName: detail.uomName,
+        uomCode: detail.uomCode,
+        categoryName: detail.categoryName,
+      });
+    }
+
+    const platformItems = rawPlatformItems.map(pi => ({
+      ...pi,
+      packageDetails: packageDetailsMap.get(pi.itemId) || [],
+    }));
 
     return {
       order: {
