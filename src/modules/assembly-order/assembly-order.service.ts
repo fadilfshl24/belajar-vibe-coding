@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { assemblyOrders, assemblyOrderDetails, assemblyOrderComponents } from "./assembly-order.schema";
 import { itemPackageDetails, items } from "../item/item.schema";
@@ -43,10 +43,13 @@ export class AssemblyOrderService {
         .returning();
 
       // 3. Process each produced item (finished good)
-      for (const detail of input.details) {
-        // Fetch BOM components for the package item using standard SQL joins
-        const components = await tx
+      // Pre-fetch all BOM components in a single query
+      const packageItemIds = Array.from(new Set(input.details.map((d) => d.itemId)));
+      let allComponents: any[] = [];
+      if (packageItemIds.length > 0) {
+        allComponents = await tx
           .select({
+            packageItemId: itemPackageDetails.packageItemId,
             childItemId: itemPackageDetails.childItemId,
             quantity: itemPackageDetails.quantity,
             purchasePrice: items.purchasePrice,
@@ -55,11 +58,25 @@ export class AssemblyOrderService {
           .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
           .where(
             and(
-              eq(itemPackageDetails.packageItemId, detail.itemId),
+              inArray(itemPackageDetails.packageItemId, packageItemIds),
               eq(itemPackageDetails.isActive, true),
               isNull(itemPackageDetails.deletedAt)
             )
           );
+      }
+
+      const componentsByPackageItemId = new Map<string, typeof allComponents>();
+      for (const comp of allComponents) {
+        const pkgId = comp.packageItemId;
+        if (!componentsByPackageItemId.has(pkgId)) {
+          componentsByPackageItemId.set(pkgId, []);
+        }
+        componentsByPackageItemId.get(pkgId)!.push(comp);
+      }
+
+      for (const detail of input.details) {
+        // Fetch BOM components for the package item from pre-fetched map
+        const components = componentsByPackageItemId.get(detail.itemId) || [];
 
         if (components.length === 0) {
           throw new Error(`Item ID ${detail.itemId} does not have component details (BOM) configured.`);
