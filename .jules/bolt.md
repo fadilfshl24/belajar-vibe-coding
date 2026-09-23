@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2026-09-23 - [Fixing N+1 Queries on Goods Receipt Creation]
+**Learning:** Sequential validation and multiple queries (`findFirst`, `insert`, `update`) were running inside a `for` loop in `src/modules/goods-receipt/goods-receipt.model.ts` during Goods Receipt creation.
+**Action:** Replace `for` loop database `findFirst`s with an array mapping of `purchaseOrderDetailId`s, fetching a single `inArray` query into a Map. Push new entry objects into an array to bulk `insert`. For modifications to the `purchaseOrderDetails`, aggregate `receivedQuantity` changes using a memory map and execute one batched SQL `CASE` statement. Ensure Drizzle column references match properly when building raw `sql` strings.
