@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-05-18 - Replacing map with Promise.all and db query with batched inArray
+**Learning:** Using `rawPlatformItems.map(async (pi) => ... db.select() ...)` triggers an N+1 query vulnerability that gets worse as the size of `rawPlatformItems` increases.
+**Action:** Always pre-fetch nested relations by aggregating the IDs (e.g., `const itemIds = [...new Set(rawPlatformItems.map(pi => pi.itemId))]`), run a single query using `inArray`, and map the results locally using a Map for O(1) matching. Ensure fallback typing to preserve type safety and inference.
