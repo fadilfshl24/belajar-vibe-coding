@@ -262,36 +262,66 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
+    // ⚡ Bolt: Resolve N+1 query by batching itemPackageDetails fetch
+    const itemIds = [...new Set(rawPlatformItems.map(pi => pi.itemId))].filter(Boolean) as string[];
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    // Default to empty array to avoid Drizzle inArray empty error
+    let allPackageDetails = [] as {
+      id: string;
+      packageItemId: string;
+      childItemId: string;
+      childItemCode: string;
+      childItemName: string;
+      quantity: string;
+      uomName: string | null;
+      uomCode: string | null;
+      categoryName: string | null;
+    }[];
+
+    if (itemIds.length > 0) {
+      allPackageDetails = (await db
+        .select({
+          id: itemPackageDetails.id,
+          packageItemId: itemPackageDetails.packageItemId,
+          childItemId: itemPackageDetails.childItemId,
+          childItemCode: items.code,
+          childItemName: items.name,
+          quantity: itemPackageDetails.quantity,
+          uomName: uoms.name,
+          uomCode: uoms.code,
+          categoryName: itemCategories.name,
+        })
+        .from(itemPackageDetails)
+        .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+        .leftJoin(uoms, eq(items.uomId, uoms.id))
+        .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+        .where(
+          and(
+            inArray(itemPackageDetails.packageItemId, itemIds),
+            isNull(itemPackageDetails.deletedAt)
+          )
+        )) as typeof allPackageDetails;
+    }
+
+    // Group package details by packageItemId for O(1) lookup
+    const packageDetailsMap = new Map<string, Omit<typeof allPackageDetails[0], "packageItemId">[]>();
+    for (const detail of allPackageDetails) {
+      const packageItemIdStr = String(detail.packageItemId);
+      if (!packageDetailsMap.has(packageItemIdStr)) {
+        packageDetailsMap.set(packageItemIdStr, []);
+      }
+      // Omit packageItemId from the detail object to match the original return type
+      const { packageItemId, ...restDetail } = detail;
+      packageDetailsMap.get(packageItemIdStr)!.push(restDetail);
+    }
+
+    const platformItems = rawPlatformItems.map((pi) => {
+      const packageDetails = packageDetailsMap.get(String(pi.itemId)) || [];
+      return {
+        ...pi,
+        packageDetails,
+      };
+    });
 
     return {
       order: {
