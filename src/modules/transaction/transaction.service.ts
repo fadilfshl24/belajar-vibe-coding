@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
 import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 
@@ -64,46 +64,78 @@ export class TransactionService {
 
       const insertPayloads = [];
 
+      const updateIds: string[] = [];
+      const physicalQtyCases: SQL[] = [sql`CASE ${inventoryStocks.id}`];
+      const availableQtyCases: SQL[] = [sql`CASE ${inventoryStocks.id}`];
+
       for (const item of txData.items) {
         const stock = stockMap.get(item.itemId);
         const qty = Number(item.quantity);
 
         if (txData.type === "IN") {
           if (stock) {
-            await tx
-              .update(inventoryStocks)
-              .set({
-                physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                availableQty: (Number(stock.availableQty) + qty).toString(),
-                updatedAt: new Date(),
-                updatedBy: userId
-              })
-              .where(eq(inventoryStocks.id, stock.id));
+            // Aggregate in-memory state in case of multiple same items
+            stock.physicalQty = (Number(stock.physicalQty) + qty).toString();
+            stock.availableQty = (Number(stock.availableQty) + qty).toString();
+
+            if (!updateIds.includes(stock.id)) {
+              updateIds.push(stock.id);
+            }
           } else {
-            insertPayloads.push({
-              warehouseId: txData.warehouseId,
-              itemId: item.itemId,
-              physicalQty: qty.toString(),
-              availableQty: qty.toString(),
-              reservedQty: "0.00",
-              createdBy: userId,
-              updatedBy: userId,
-            });
+            // If multiple of same item, ideally we should also aggregate in insertPayloads,
+            // but assuming unique items per transaction for now, or we can aggregate inserts too.
+            const existingInsert = insertPayloads.find(p => p.itemId === item.itemId);
+            if (existingInsert) {
+               existingInsert.physicalQty = (Number(existingInsert.physicalQty) + qty).toString();
+               existingInsert.availableQty = (Number(existingInsert.availableQty) + qty).toString();
+            } else {
+               insertPayloads.push({
+                 warehouseId: txData.warehouseId,
+                 itemId: item.itemId,
+                 physicalQty: qty.toString(),
+                 availableQty: qty.toString(),
+                 reservedQty: "0.00",
+                 createdBy: userId,
+                 updatedBy: userId,
+               });
+            }
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.physicalQty) < qty) {
             throw new Error(`Insufficient stock for item ${item.itemId}`);
           }
-          await tx
-            .update(inventoryStocks)
-            .set({
-              physicalQty: (Number(stock.physicalQty) - qty).toString(),
-              availableQty: (Number(stock.availableQty) - qty).toString(),
-              updatedAt: new Date(),
-              updatedBy: userId
-            })
-            .where(eq(inventoryStocks.id, stock.id));
+          // Aggregate in-memory state
+          stock.physicalQty = (Number(stock.physicalQty) - qty).toString();
+          stock.availableQty = (Number(stock.availableQty) - qty).toString();
+
+          if (!updateIds.includes(stock.id)) {
+            updateIds.push(stock.id);
+          }
         }
+      }
+
+      // Build SQL CASES after all in-memory aggregation is done
+      for (const id of updateIds) {
+         const stock = stocks.find(s => s.id === id);
+         if (stock) {
+           physicalQtyCases.push(sql`WHEN ${id} THEN ${stock.physicalQty}`);
+           availableQtyCases.push(sql`WHEN ${id} THEN ${stock.availableQty}`);
+         }
+      }
+
+      if (updateIds.length > 0) {
+        physicalQtyCases.push(sql`ELSE ${inventoryStocks.physicalQty} END`);
+        availableQtyCases.push(sql`ELSE ${inventoryStocks.availableQty} END`);
+
+        await tx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql.join(physicalQtyCases, sql` `),
+            availableQty: sql.join(availableQtyCases, sql` `),
+            updatedAt: new Date(),
+            updatedBy: userId
+          })
+          .where(inArray(inventoryStocks.id, updateIds));
       }
 
       if (insertPayloads.length > 0) {
@@ -138,6 +170,10 @@ export class TransactionService {
           : [];
         const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
+        const updateIds: string[] = [];
+        const physicalQtyCases: SQL[] = [sql`CASE ${inventoryStocks.id}`];
+        const availableQtyCases: SQL[] = [sql`CASE ${inventoryStocks.id}`];
+
         for (const item of txData.items) {
           const stock = stockMap.get(item.itemId);
 
@@ -145,28 +181,41 @@ export class TransactionService {
             const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) - qty).toString(),
-                  availableQty: (Number(stock.availableQty) - qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              stock.physicalQty = (Number(stock.physicalQty) - qty).toString();
+              stock.availableQty = (Number(stock.availableQty) - qty).toString();
             } else {
               // Revert OUT -> add
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                  availableQty: (Number(stock.availableQty) + qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              stock.physicalQty = (Number(stock.physicalQty) + qty).toString();
+              stock.availableQty = (Number(stock.availableQty) + qty).toString();
+            }
+            if (!updateIds.includes(stock.id)) {
+              updateIds.push(stock.id);
             }
           }
+        }
+
+        // Build SQL CASES after all in-memory aggregation is done
+        for (const id of updateIds) {
+           const stock = stocks.find(s => s.id === id);
+           if (stock) {
+             physicalQtyCases.push(sql`WHEN ${id} THEN ${stock.physicalQty}`);
+             availableQtyCases.push(sql`WHEN ${id} THEN ${stock.availableQty}`);
+           }
+        }
+
+        if (updateIds.length > 0) {
+          physicalQtyCases.push(sql`ELSE ${inventoryStocks.physicalQty} END`);
+          availableQtyCases.push(sql`ELSE ${inventoryStocks.availableQty} END`);
+
+          await tx
+            .update(inventoryStocks)
+            .set({
+              physicalQty: sql.join(physicalQtyCases, sql` `),
+              availableQty: sql.join(availableQtyCases, sql` `),
+              updatedAt: new Date(),
+              updatedBy: approvedBy
+            })
+            .where(inArray(inventoryStocks.id, updateIds));
         }
       });
     }
