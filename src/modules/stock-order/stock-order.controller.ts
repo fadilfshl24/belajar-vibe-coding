@@ -12,8 +12,8 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import * as xlsx from "xlsx";
 import { db } from "../../core/db";
 import { itemPlatformSkus } from "../item-platform-sku/item-platform-sku.schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
-import type { StockOrderInsert, StockOrderItemInsert } from "./stock-order.schema";
+import { and, eq, isNull, sql, inArray } from "drizzle-orm";
+import { stockOrders, type StockOrderInsert, type StockOrderItemInsert } from "./stock-order.schema";
 import { platforms } from "../platform";
 
 const MODULE_TYPE = "STOCK_ORDER";
@@ -160,9 +160,19 @@ export class StockOrderController {
 
       let importedCount = 0;
       await db.transaction(async (trx) => {
+        const trackingIds = Array.from(stockOrdersMap.keys());
+
+        // ⚡ Bolt: Resolve N+1 query by batch fetching existing tracking IDs
+        // Instead of querying the database for each tracking ID individually,
+        // we fetch all existing IDs in a single query and use a Set for O(1) lookups.
+        let existingTrackingIds = new Set<string>();
+        if (trackingIds.length > 0) {
+          const existingRecords = await trx.select({ trackingId: stockOrders.trackingId }).from(stockOrders).where(and(inArray(stockOrders.trackingId, trackingIds), isNull(stockOrders.deletedAt)));
+          existingTrackingIds = new Set(existingRecords.map(r => r.trackingId));
+        }
+
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }
