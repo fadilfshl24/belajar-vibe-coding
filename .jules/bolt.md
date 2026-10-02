@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2026-10-02 - [N+1 Query Issue in scanForOutbound]
+**Learning:** Found an N+1 query issue in `scanForOutbound` using `Promise.all` with `map` inside `src/modules/stock-order/stock-order.model.ts`. The return type inference from Drizzle was lost when typing a temporary Map as `any[]` leading to TS issues during code review.
+**Action:** Replaced the loop with an `inArray` single DB call, extracted the data to an in-memory Map for O(1) processing, and provided explicit schema typing instead of `any[]` to preserve type safety.
