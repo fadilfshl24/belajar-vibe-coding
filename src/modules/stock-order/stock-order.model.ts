@@ -262,36 +262,47 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
-          .select({
-            id: itemPackageDetails.id,
-            childItemId: itemPackageDetails.childItemId,
-            childItemCode: items.code,
-            childItemName: items.name,
-            quantity: itemPackageDetails.quantity,
-            uomName: uoms.name,
-            uomCode: uoms.code,
-            categoryName: itemCategories.name,
-          })
-          .from(itemPackageDetails)
-          .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
-          .leftJoin(uoms, eq(items.uomId, uoms.id))
-          .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
-          .where(
-            and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
-              isNull(itemPackageDetails.deletedAt)
-            )
-          );
-
-        return {
-          ...pi,
-          packageDetails,
-        };
+    const packageItemIds = [...new Set(rawPlatformItems.map((pi) => pi.itemId))];
+    const allPackageDetails = packageItemIds.length > 0 ? await db
+      .select({
+        packageItemId: itemPackageDetails.packageItemId,
+        id: itemPackageDetails.id,
+        childItemId: itemPackageDetails.childItemId,
+        childItemCode: items.code,
+        childItemName: items.name,
+        quantity: itemPackageDetails.quantity,
+        uomName: uoms.name,
+        uomCode: uoms.code,
+        categoryName: itemCategories.name,
       })
-    );
+      .from(itemPackageDetails)
+      .innerJoin(items, eq(itemPackageDetails.childItemId, items.id))
+      .leftJoin(uoms, eq(items.uomId, uoms.id))
+      .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
+      .where(
+        and(
+          inArray(itemPackageDetails.packageItemId, packageItemIds),
+          isNull(itemPackageDetails.deletedAt)
+        )
+      ) : [];
+
+    const packageDetailsMap = new Map<string, typeof allPackageDetails>();
+    for (const detail of allPackageDetails) {
+      if (!packageDetailsMap.has(detail.packageItemId)) {
+        packageDetailsMap.set(detail.packageItemId, []);
+      }
+      const arr = packageDetailsMap.get(detail.packageItemId)!;
+      // We remove the internal mapping key when attaching
+      const { packageItemId, ...rest } = detail;
+      arr.push(rest as any);
+    }
+
+    const platformItems = rawPlatformItems.map((pi) => {
+      return {
+        ...pi,
+        packageDetails: packageDetailsMap.get(pi.itemId) || [],
+      };
+    });
 
     return {
       order: {
