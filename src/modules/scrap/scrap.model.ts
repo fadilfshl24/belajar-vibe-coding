@@ -309,15 +309,37 @@ export class ScrapModel {
 
           await tx.insert(transactionItems).values(trxItems);
 
+          // Optimized N+1 query
+          const aggregatedDetails = new Map<string, { qtyVal: number, itemCode: string }>();
           for (const d of scrap.details) {
-            const stock = await tx.query.inventoryStocks.findFirst({
-              where: and(
-                eq(inventoryStocks.warehouseId, scrap.warehouseId),
-                eq(inventoryStocks.itemId, d.itemId)
-              ),
+            const current = aggregatedDetails.get(d.itemId) || { qtyVal: 0, itemCode: d.itemCode };
+            aggregatedDetails.set(d.itemId, {
+              qtyVal: current.qtyVal + Number(d.quantity),
+              itemCode: d.itemCode
             });
+          }
 
-            const qtyVal = Number(d.quantity);
+          const itemIds = Array.from(aggregatedDetails.keys());
+          const existingStocks = itemIds.length > 0
+            ? await tx.select({
+                id: inventoryStocks.id,
+                itemId: inventoryStocks.itemId,
+                physicalQty: inventoryStocks.physicalQty,
+                availableQty: inventoryStocks.availableQty
+              })
+              .from(inventoryStocks)
+              .where(
+                and(
+                  eq(inventoryStocks.warehouseId, scrap.warehouseId),
+                  inArray(inventoryStocks.itemId, itemIds)
+                )
+              )
+            : [];
+          const stockMap = new Map(existingStocks.map(s => [String(s.itemId), s]));
+
+          for (const [itemId, data] of aggregatedDetails.entries()) {
+            const stock = stockMap.get(String(itemId));
+            const qtyVal = data.qtyVal;
 
             if (scrap.type === "IN") {
               // Scrap IN (refund customer) -> ADD stock
@@ -334,9 +356,9 @@ export class ScrapModel {
               } else {
                 await tx.insert(inventoryStocks).values({
                   warehouseId: scrap.warehouseId,
-                  itemId: d.itemId,
-                  physicalQty: d.quantity,
-                  availableQty: d.quantity,
+                  itemId: itemId,
+                  physicalQty: qtyVal.toString(),
+                  availableQty: qtyVal.toString(),
                   reservedQty: "0.00",
                   createdBy: userId,
                   updatedBy: userId,
@@ -345,7 +367,7 @@ export class ScrapModel {
             } else {
               // Scrap OUT (damage/lost) -> SUBTRACT stock
               if (!stock || Number(stock.physicalQty) < qtyVal) {
-                throw new Error(`Insufficient physical stock for item code: ${d.itemCode}`);
+                throw new Error(`Insufficient physical stock for item code: ${data.itemCode}`);
               }
               await tx
                 .update(inventoryStocks)
