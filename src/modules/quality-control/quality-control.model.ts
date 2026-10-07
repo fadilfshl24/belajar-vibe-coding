@@ -351,17 +351,37 @@ export class QualityControlModel {
           }));
           await tx.insert(transactionItems).values(trxInItems);
 
-          // Update real inventory stock
-          for (const detail of passDetails) {
-            const stock = await tx.query.inventoryStocks.findFirst({
-              where: and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId))
-            });
+          // Update real inventory stock (Optimized N+1)
+          const aggregatedDetails = new Map<string, number>();
+          for (const d of passDetails) {
+            aggregatedDetails.set(d.itemId, (aggregatedDetails.get(d.itemId) || 0) + d.passQuantity);
+          }
+          const itemIds = Array.from(aggregatedDetails.keys());
+          const existingStocks = itemIds.length > 0
+            ? await tx.select({
+                id: inventoryStocks.id,
+                itemId: inventoryStocks.itemId,
+                physicalQty: inventoryStocks.physicalQty,
+                availableQty: inventoryStocks.availableQty
+              })
+              .from(inventoryStocks)
+              .where(
+                and(
+                  eq(inventoryStocks.warehouseId, warehouseId),
+                  inArray(inventoryStocks.itemId, itemIds)
+                )
+              )
+            : [];
+          const stockMap = new Map(existingStocks.map(s => [String(s.itemId), s]));
+
+          for (const [itemId, passQty] of aggregatedDetails.entries()) {
+            const stock = stockMap.get(String(itemId));
 
             if (stock) {
               await tx.update(inventoryStocks)
                 .set({
-                  physicalQty: (parseFloat(stock.physicalQty) + detail.passQuantity).toString(),
-                  availableQty: (parseFloat(stock.availableQty) + detail.passQuantity).toString(),
+                  physicalQty: (parseFloat(stock.physicalQty) + passQty).toString(),
+                  availableQty: (parseFloat(stock.availableQty) + passQty).toString(),
                   updatedAt: new Date(),
                   updatedBy: userId
                 })
@@ -369,9 +389,9 @@ export class QualityControlModel {
             } else {
               await tx.insert(inventoryStocks).values({
                 warehouseId,
-                itemId: detail.itemId,
-                physicalQty: detail.passQuantity.toString(),
-                availableQty: detail.passQuantity.toString(),
+                itemId,
+                physicalQty: passQty.toString(),
+                availableQty: passQty.toString(),
                 reservedQty: "0.00",
                 createdBy: userId,
                 updatedBy: userId,

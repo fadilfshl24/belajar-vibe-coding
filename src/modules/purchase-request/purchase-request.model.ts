@@ -377,29 +377,49 @@ export class PurchaseRequestModel {
       }))
     );
 
-    // 4. Upsert inventory_stocks for each item
-    for (const detail of prDetails) {
-      const existing = await tx
-        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
-        .from(inventoryStocks)
-        .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
+    // 4. Upsert inventory_stocks for each item (Optimized N+1)
+    const aggregatedDetails = new Map<string, number>();
+    for (const d of prDetails) {
+      aggregatedDetails.set(d.itemId, (aggregatedDetails.get(d.itemId) || 0) + Number(d.quantity));
+    }
+    const itemIds = Array.from(aggregatedDetails.keys());
+    const existingStocks = itemIds.length > 0
+      ? await tx
+          .select({
+            id: inventoryStocks.id,
+            itemId: inventoryStocks.itemId,
+            physicalQty: inventoryStocks.physicalQty,
+            availableQty: inventoryStocks.availableQty,
+          })
+          .from(inventoryStocks)
+          .where(
+            and(
+              eq(inventoryStocks.warehouseId, warehouseId),
+              inArray(inventoryStocks.itemId, itemIds)
+            )
+          )
+      : [];
+    const stockMap = new Map(existingStocks.map(s => [String(s.itemId), s]));
 
-      if (existing.length === 0) {
+    for (const [itemId, totalQty] of aggregatedDetails.entries()) {
+      const existingStock = stockMap.get(String(itemId));
+
+      if (!existingStock) {
         // Insert new stock record
         await tx.insert(inventoryStocks).values({
           warehouseId,
-          itemId: detail.itemId,
-          physicalQty: detail.quantity.toString(),
-          availableQty: detail.quantity.toString(),
+          itemId,
+          physicalQty: totalQty.toString(),
+          availableQty: totalQty.toString(),
           reservedQty: "0.00",
           createdBy: userId,
           updatedBy: userId,
         });
       } else {
         // Update existing stock quantity
-        const existingStock = existing[0]!;
-        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
-        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
+        const newPhysicalQty = Number(existingStock.physicalQty) + totalQty;
+        const newAvailableQty = Number(existingStock.availableQty) + totalQty;
+
         await tx
           .update(inventoryStocks)
           .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
