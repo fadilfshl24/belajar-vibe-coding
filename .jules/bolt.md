@@ -5,3 +5,10 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2024-05-19 - [Fixing N+1 Queries on Goods Receipt Creation]
+**Learning:** Found N+1 sequential database operations occurring in a loop during Goods Receipt creation (`src/modules/goods-receipt/goods-receipt.model.ts`). The application was iterating over payload details and performing individual reads (findFirst), inserts, and updates for each detail.
+**Action:** Replaced sequential operations with batched alternatives:
+1. Extracted all IDs and used a single `inArray` query to fetch related records into a `Map` for O(1) lookups.
+2. Accumulated insert payloads into an array for a single bulk `insert().values(array)` operation.
+3. Accumulated update logic into an in-memory Map and executed a single `tx.update().set().where()` operation using a dynamic Drizzle `sql` chunk `CASE` statement.
+This pattern converts $O(N)$ database queries to $O(1)$ constant queries regardless of payload size.
