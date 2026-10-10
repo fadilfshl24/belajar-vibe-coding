@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-10-10 - Drizzle ORM Type Enforcement in dynamic SQL UPDATE queries
+**Learning:** When executing dynamic SQL expressions using raw `CASE` statements directly within Drizzle's `.set()` method (e.g. `await tx.update(...).set({ field: sqlCaseObject })`), Drizzle's strict typing system expects specific scalar types (e.g., `string` or `number`) and may aggressively flag the dynamically constructed `sql` generic template literal object as an error.
+**Action:** Utilize Drizzle's escape hatch by casting the assembled `sql` chunk object as `any` (e.g., `fieldName: caseSql as any`) only within the `.set()` arguments when dealing with dynamically injected bulk parameter configurations.

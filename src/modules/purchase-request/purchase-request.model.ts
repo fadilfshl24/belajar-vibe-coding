@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne, gte, lte } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, ne, gte, lte, sql } from "drizzle-orm";
 import type { AnyColumn } from "drizzle-orm";
 import { db } from "../../core/db";
 import { purchaseRequests, purchaseRequestDetails } from "./purchase-request.schema";
@@ -378,32 +378,92 @@ export class PurchaseRequestModel {
     );
 
     // 4. Upsert inventory_stocks for each item
-    for (const detail of prDetails) {
-      const existing = await tx
-        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
-        .from(inventoryStocks)
-        .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
+    const itemIds = prDetails.map((d) => d.itemId);
+    const uniqueItemIds = [...new Set(itemIds)];
 
-      if (existing.length === 0) {
-        // Insert new stock record
-        await tx.insert(inventoryStocks).values({
-          warehouseId,
-          itemId: detail.itemId,
-          physicalQty: detail.quantity.toString(),
-          availableQty: detail.quantity.toString(),
-          reservedQty: "0.00",
-          createdBy: userId,
-          updatedBy: userId,
-        });
-      } else {
-        // Update existing stock quantity
-        const existingStock = existing[0]!;
-        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
-        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
+    // Aggregate quantities in case there are duplicate items
+    const quantityMap = new Map<string, number>();
+    for (const detail of prDetails) {
+      const current = quantityMap.get(detail.itemId) || 0;
+      quantityMap.set(detail.itemId, current + Number(detail.quantity));
+    }
+
+    if (uniqueItemIds.length > 0) {
+      const existingStocks = await tx
+        .select({
+          id: inventoryStocks.id,
+          itemId: inventoryStocks.itemId,
+          physicalQty: inventoryStocks.physicalQty,
+          availableQty: inventoryStocks.availableQty
+        })
+        .from(inventoryStocks)
+        .where(
+          and(
+            eq(inventoryStocks.warehouseId, warehouseId),
+            inArray(inventoryStocks.itemId, uniqueItemIds)
+          )
+        );
+
+      const existingStockMap = new Map(existingStocks.map(s => [s.itemId, s]));
+
+      const insertPayloads = [];
+      const updatePayloads = [];
+
+      for (const itemId of uniqueItemIds) {
+        const aggregatedQty = quantityMap.get(itemId)!;
+        const existing = existingStockMap.get(itemId);
+
+        if (!existing) {
+          insertPayloads.push({
+            warehouseId,
+            itemId,
+            physicalQty: aggregatedQty.toString(),
+            availableQty: aggregatedQty.toString(),
+            reservedQty: "0.00",
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        } else {
+          const newPhysicalQty = Number(existing.physicalQty) + aggregatedQty;
+          const newAvailableQty = Number(existing.availableQty) + aggregatedQty;
+          updatePayloads.push({
+            id: existing.id,
+            newPhysicalQty: newPhysicalQty.toString(),
+            newAvailableQty: newAvailableQty.toString()
+          });
+        }
+      }
+
+      if (insertPayloads.length > 0) {
+        await tx.insert(inventoryStocks).values(insertPayloads);
+      }
+
+      if (updatePayloads.length > 0) {
+        const physicalQtySqlChunks: any[] = [];
+        physicalQtySqlChunks.push(sql`(case`);
+        for (const update of updatePayloads) {
+          physicalQtySqlChunks.push(sql`when ${inventoryStocks.id} = ${update.id} then ${update.newPhysicalQty}`);
+        }
+        physicalQtySqlChunks.push(sql`end)`);
+        const physicalQtyCase = sql.join(physicalQtySqlChunks, sql` `);
+
+        const availableQtySqlChunks: any[] = [];
+        availableQtySqlChunks.push(sql`(case`);
+        for (const update of updatePayloads) {
+          availableQtySqlChunks.push(sql`when ${inventoryStocks.id} = ${update.id} then ${update.newAvailableQty}`);
+        }
+        availableQtySqlChunks.push(sql`end)`);
+        const availableQtyCase = sql.join(availableQtySqlChunks, sql` `);
+
         await tx
           .update(inventoryStocks)
-          .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
-          .where(eq(inventoryStocks.id, existingStock.id));
+          .set({
+            physicalQty: physicalQtyCase as any,
+            availableQty: availableQtyCase as any,
+            updatedAt: new Date(),
+            updatedBy: userId
+          })
+          .where(inArray(inventoryStocks.id, updatePayloads.map((u) => u.id)));
       }
     }
   }
