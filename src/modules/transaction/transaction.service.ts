@@ -32,6 +32,34 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+  /**
+   * Performance optimization: Batch checks for locked stocks to prevent N+1 queries.
+   * Returns a Set of item IDs that are locked by an Approved Purchase Request.
+   */
+  static async getLockedStocks(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (itemIds.length === 0) return new Set();
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, itemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedPRs.map((pr) => pr.itemId));
+  }
+
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
@@ -39,9 +67,13 @@ export class TransactionService {
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
+      // ⚡ Bolt Optimization: Replaced sequential N+1 database queries inside loop
+      // with a single batched inArray query to fetch locked stocks, checking against an O(1) in-memory Set.
+      const itemIdsToCheck = txData.items.map(item => item.itemId);
+      const lockedStocksSet = await TransactionService.getLockedStocks(txData.warehouseId, itemIdsToCheck);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedStocksSet.has(item.itemId)) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
