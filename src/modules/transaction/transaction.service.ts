@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
 import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 
@@ -64,46 +64,70 @@ export class TransactionService {
 
       const insertPayloads = [];
 
+      const updatedStocksMap = new Map<string, typeof stocks[0]>();
+
       for (const item of txData.items) {
-        const stock = stockMap.get(item.itemId);
+        let stock = stockMap.get(item.itemId);
         const qty = Number(item.quantity);
 
         if (txData.type === "IN") {
           if (stock) {
-            await tx
-              .update(inventoryStocks)
-              .set({
-                physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                availableQty: (Number(stock.availableQty) + qty).toString(),
-                updatedAt: new Date(),
-                updatedBy: userId
-              })
-              .where(eq(inventoryStocks.id, stock.id));
+            stock.physicalQty = (Number(stock.physicalQty) + qty).toString();
+            stock.availableQty = (Number(stock.availableQty) + qty).toString();
+            updatedStocksMap.set(stock.id, stock);
           } else {
-            insertPayloads.push({
-              warehouseId: txData.warehouseId,
-              itemId: item.itemId,
-              physicalQty: qty.toString(),
-              availableQty: qty.toString(),
-              reservedQty: "0.00",
-              createdBy: userId,
-              updatedBy: userId,
-            });
+            let pendingInsert = insertPayloads.find((p) => p.itemId === item.itemId);
+            if (pendingInsert) {
+              pendingInsert.physicalQty = (Number(pendingInsert.physicalQty) + qty).toString();
+              pendingInsert.availableQty = (Number(pendingInsert.availableQty) + qty).toString();
+            } else {
+              insertPayloads.push({
+                warehouseId: txData.warehouseId,
+                itemId: item.itemId,
+                physicalQty: qty.toString(),
+                availableQty: qty.toString(),
+                reservedQty: "0.00",
+                createdBy: userId,
+                updatedBy: userId,
+              });
+            }
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.physicalQty) < qty) {
             throw new Error(`Insufficient stock for item ${item.itemId}`);
           }
-          await tx
-            .update(inventoryStocks)
-            .set({
-              physicalQty: (Number(stock.physicalQty) - qty).toString(),
-              availableQty: (Number(stock.availableQty) - qty).toString(),
-              updatedAt: new Date(),
-              updatedBy: userId
-            })
-            .where(eq(inventoryStocks.id, stock.id));
+          stock.physicalQty = (Number(stock.physicalQty) - qty).toString();
+          stock.availableQty = (Number(stock.availableQty) - qty).toString();
+          updatedStocksMap.set(stock.id, stock);
         }
+      }
+
+      // ⚡ Bolt: Batch stock updates into a single query to eliminate N+1 latency
+      // This optimization reduces N database roundtrips to 1 when processing a transaction containing multiple items
+      if (updatedStocksMap.size > 0) {
+        const sqlChunksPhysical: any[] = [];
+        const sqlChunksAvailable: any[] = [];
+
+        sqlChunksPhysical.push(sql`CASE`);
+        sqlChunksAvailable.push(sql`CASE`);
+
+        for (const [id, stock] of updatedStocksMap.entries()) {
+          sqlChunksPhysical.push(sql`WHEN ${inventoryStocks.id} = ${id} THEN ${stock.physicalQty}::numeric`);
+          sqlChunksAvailable.push(sql`WHEN ${inventoryStocks.id} = ${id} THEN ${stock.availableQty}::numeric`);
+        }
+
+        sqlChunksPhysical.push(sql`END`);
+        sqlChunksAvailable.push(sql`END`);
+
+        await tx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql.join(sqlChunksPhysical, sql` `),
+            availableQty: sql.join(sqlChunksAvailable, sql` `),
+            updatedAt: new Date(),
+            updatedBy: userId,
+          })
+          .where(inArray(inventoryStocks.id, Array.from(updatedStocksMap.keys())));
       }
 
       if (insertPayloads.length > 0) {
@@ -138,6 +162,8 @@ export class TransactionService {
           : [];
         const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
+        const updatedStocksMap = new Map<string, typeof stocks[0]>();
+
         for (const item of txData.items) {
           const stock = stockMap.get(item.itemId);
 
@@ -145,28 +171,44 @@ export class TransactionService {
             const qty = Number(item.quantity);
             if (txData.type === "IN") {
               // Revert IN -> subtract
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) - qty).toString(),
-                  availableQty: (Number(stock.availableQty) - qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              stock.physicalQty = (Number(stock.physicalQty) - qty).toString();
+              stock.availableQty = (Number(stock.availableQty) - qty).toString();
+              updatedStocksMap.set(stock.id, stock);
             } else {
               // Revert OUT -> add
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                  availableQty: (Number(stock.availableQty) + qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              stock.physicalQty = (Number(stock.physicalQty) + qty).toString();
+              stock.availableQty = (Number(stock.availableQty) + qty).toString();
+              updatedStocksMap.set(stock.id, stock);
             }
           }
+        }
+
+        // ⚡ Bolt: Batch stock updates into a single query to eliminate N+1 latency
+        // This optimization reduces N database roundtrips to 1 when processing a transaction containing multiple items
+        if (updatedStocksMap.size > 0) {
+          const sqlChunksPhysical: any[] = [];
+          const sqlChunksAvailable: any[] = [];
+
+          sqlChunksPhysical.push(sql`CASE`);
+          sqlChunksAvailable.push(sql`CASE`);
+
+          for (const [id, stock] of updatedStocksMap.entries()) {
+            sqlChunksPhysical.push(sql`WHEN ${inventoryStocks.id} = ${id} THEN ${stock.physicalQty}::numeric`);
+            sqlChunksAvailable.push(sql`WHEN ${inventoryStocks.id} = ${id} THEN ${stock.availableQty}::numeric`);
+          }
+
+          sqlChunksPhysical.push(sql`END`);
+          sqlChunksAvailable.push(sql`END`);
+
+          await tx
+            .update(inventoryStocks)
+            .set({
+              physicalQty: sql.join(sqlChunksPhysical, sql` `),
+              availableQty: sql.join(sqlChunksAvailable, sql` `),
+              updatedAt: new Date(),
+              updatedBy: approvedBy,
+            })
+            .where(inArray(inventoryStocks.id, Array.from(updatedStocksMap.keys())));
         }
       });
     }
