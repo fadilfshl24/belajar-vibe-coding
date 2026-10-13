@@ -12,8 +12,9 @@ import type { JwtPayload } from "../../core/types/JwtPayload";
 import * as xlsx from "xlsx";
 import { db } from "../../core/db";
 import { itemPlatformSkus } from "../item-platform-sku/item-platform-sku.schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql, inArray } from "drizzle-orm";
 import type { StockOrderInsert, StockOrderItemInsert } from "./stock-order.schema";
+import { stockOrders } from "./stock-order.schema";
 import { platforms } from "../platform";
 
 const MODULE_TYPE = "STOCK_ORDER";
@@ -158,11 +159,16 @@ export class StockOrderController {
         });
       }
 
+      const allTrackingIds = Array.from(stockOrdersMap.keys());
+      const existingOrders = allTrackingIds.length > 0
+        ? await db.select({ trackingId: stockOrders.trackingId }).from(stockOrders).where(and(inArray(stockOrders.trackingId, allTrackingIds), isNull(stockOrders.deletedAt)))
+        : [];
+      const existingTrackingIds = new Set(existingOrders.map((o) => o.trackingId));
+
       let importedCount = 0;
       await db.transaction(async (trx) => {
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }

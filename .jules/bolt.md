@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2023-10-25 - [Batch database lookups with `inArray` over `for` loop]
+**Learning:** Doing a separate `await db.select()...` query inside a for loop when doing batched insertion or update creates significant N+1 query issue.
+**Action:** Pre-aggregate tracking ids and resolve using `inArray` to significantly improve performance on large bulk upserts or imports.
