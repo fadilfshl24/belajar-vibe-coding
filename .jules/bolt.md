@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-05-18 - [Missing Import for inArray]
+**Learning:** When using `inArray` in Drizzle ORM queries, the import `import { inArray } from "drizzle-orm";` must be explicitly added to the top of the file to prevent compile-time errors.
+**Action:** Always verify imports and run type checks before finalizing the patch to avoid breaking the build.
