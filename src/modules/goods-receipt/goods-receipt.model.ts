@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,36 +164,56 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
-      for (const detail of payload.details) {
-        // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
+      // ⚡ Bolt Performance Optimization: Eliminated N*3 queries per goods receipt payload by batching db calls.
+      if (payload.details && payload.details.length > 0) {
+        const poDetailIds = [...new Set(payload.details.map(d => d.purchaseOrderDetailId))];
+        const poDetailsArr = await tx.query.purchaseOrderDetails.findMany({
+          where: and(inArray(purchaseOrderDetails.id, poDetailIds), isNull(purchaseOrderDetails.deletedAt))
         });
         
-        if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
+        const poDetailsMap = new Map(poDetailsArr.map(pd => [pd.id, pd]));
+        const grDetailsToInsert: any[] = [];
+        const updateStatements: any[] = [];
+        const poDetailsUpdatedIds = new Set<string>();
         
-        // Allowed over-receive? We might just cap it or allow it depending on business logic.
-        // For now, let's just log or accept the received quantity.
+        for (const detail of payload.details) {
+          const poDetail = poDetailsMap.get(detail.purchaseOrderDetailId);
+          if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
 
-        await tx.insert(goodsReceiptDetails).values({
-          goodsReceiptId: gr.id,
-          purchaseOrderDetailId: detail.purchaseOrderDetailId,
-          itemId: detail.itemId,
-          receivedQuantity: detail.receivedQuantity,
-          remark: detail.remark,
-          createdBy: userId,
-          updatedBy: userId,
-        });
-
-        // Update PO Detail's receivedQuantity
-        const newReceivedQty = poDetail.receivedQuantity + detail.receivedQuantity;
-        await tx.update(purchaseOrderDetails)
-          .set({
-            receivedQuantity: newReceivedQty,
-            updatedAt: new Date(),
+          grDetailsToInsert.push({
+            goodsReceiptId: gr.id,
+            purchaseOrderDetailId: detail.purchaseOrderDetailId,
+            itemId: detail.itemId,
+            receivedQuantity: detail.receivedQuantity,
+            remark: detail.remark,
+            createdBy: userId,
             updatedBy: userId,
-          })
-          .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+          });
+
+          // Increment in-memory to handle duplicates in payload correctly
+          poDetail.receivedQuantity += detail.receivedQuantity;
+          poDetailsUpdatedIds.add(poDetail.id);
+        }
+
+        await tx.insert(goodsReceiptDetails).values(grDetailsToInsert);
+
+        for (const id of poDetailsUpdatedIds) {
+          const pd = poDetailsMap.get(id);
+          if (pd) {
+            updateStatements.push(sql`WHEN id = ${id} THEN ${pd.receivedQuantity}`);
+          }
+        }
+
+        if (updateStatements.length > 0) {
+          const caseSql = sql`CASE ${sql.join(updateStatements, sql` `)} ELSE received_quantity END`;
+          await tx.update(purchaseOrderDetails)
+            .set({
+              receivedQuantity: caseSql as any,
+              updatedAt: new Date(),
+              updatedBy: userId,
+            })
+            .where(inArray(purchaseOrderDetails.id, Array.from(poDetailsUpdatedIds)));
+        }
       }
 
       // 4. Update PO Status
