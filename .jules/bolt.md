@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2025-03-02 - [Preserving Logic in N+1 Query Refactoring]
+**Learning:** When refactoring sequential N+1 query loops into batched queries (e.g., using `inArray` to fetch into an in-memory Map), it is extremely easy to accidentally drop important branching logic like conditional inserts (e.g., creating a new stock record if one didn't exist).
+**Action:** Always meticulously compare the original loop logic (especially `if/else` branches and error throws) against the batched logic before submitting. Verify that every pathway from the original loop is accounted for in the optimized version.
