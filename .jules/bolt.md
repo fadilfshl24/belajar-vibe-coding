@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2024-10-19 - [Fixing N+1 in Quotation Plan PR Processing]
+**Learning:** Found N+1 queries in `quotation-plan.model.ts` during final approval when verifying PR fulfillment status. The code iterated over each `qpPrs` pivot to query `purchaseRequestDetails`. Passing `unknown[]` derived from map to `inArray` caused TS2769: No overload matches this call due to drizzle's strong typing. Explicitly typing the array elements is required.
+**Action:** Deduplicate `prId` strings mapped from `qpPrs` to an array explicitly typed as `string[]` by using `Array.from(new Set(mapResult))`. Use `inArray` to fetch PR details and map them to their parent `prId`, processing fulfillments strictly from memory, before applying batched updates using `inArray` for all fulfilled `prIds`.
