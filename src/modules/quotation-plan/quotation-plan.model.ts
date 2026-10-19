@@ -411,19 +411,35 @@ export class QuotationPlanModel {
       where: eq(quotationPlanPurchaseRequests.quotationPlanId, qp.id)
     });
     
-    for (const prPivot of qpPrs) {
-      const prId = prPivot.purchaseRequestId;
-      const prDetails = await tx.query.purchaseRequestDetails.findMany({
-        where: eq(purchaseRequestDetails.purchaseRequestId, prId)
+    if (qpPrs.length > 0) {
+      const uniquePrIds: string[] = Array.from(new Set(qpPrs.map((p: any) => String(p.purchaseRequestId))));
+
+      // Fetch all details for these PRs in a single query
+      const allPrDetails = await tx.query.purchaseRequestDetails.findMany({
+        where: inArray(purchaseRequestDetails.purchaseRequestId, uniquePrIds as string[])
       });
 
-      const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+      const prDetailsMap = new Map<string, any[]>();
+      for (const detail of allPrDetails) {
+        if (!prDetailsMap.has(detail.purchaseRequestId)) {
+          prDetailsMap.set(detail.purchaseRequestId, []);
+        }
+        prDetailsMap.get(detail.purchaseRequestId)!.push(detail);
+      }
 
-      if (isFullyFulfilled) {
-        // Status 5 is Complete (as requested by user)
+      const fulfilledPrIds: string[] = [];
+      for (const prId of uniquePrIds) {
+        const prDetails = prDetailsMap.get(prId) || [];
+        const isFullyFulfilled = prDetails.length > 0 && prDetails.every((d: any) => d.processedQuantity >= d.quantity);
+        if (isFullyFulfilled) {
+          fulfilledPrIds.push(prId);
+        }
+      }
+
+      if (fulfilledPrIds.length > 0) {
         await tx.update(purchaseRequests)
-          .set({ status: 5, updatedAt: new Date(), updatedBy: userId }) 
-          .where(eq(purchaseRequests.id, prId));
+          .set({ status: 5, updatedAt: new Date(), updatedBy: userId })
+          .where(inArray(purchaseRequests.id, fulfilledPrIds));
       }
     }
   }
