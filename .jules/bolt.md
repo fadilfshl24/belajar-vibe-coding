@@ -5,3 +5,6 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+## 2024-05-18 - [Fixing N+1 Queries on isStockLocked]
+**Learning:** Found N+1 sequential database reads occurring in a loop during transaction completion checking `isStockLocked` in `src/modules/transaction/transaction.service.ts`. The `isStockLocked` function was being called sequentially for every item in `txData.items`.
+**Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Set (grouped by itemId) for O(1) checks. Modified `isStockLocked` to wrap the new `getLockedStockItems` batch function. Added `groupBy` to ensure we don't query redundant data.
