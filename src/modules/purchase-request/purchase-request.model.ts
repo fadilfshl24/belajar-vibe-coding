@@ -378,33 +378,52 @@ export class PurchaseRequestModel {
     );
 
     // 4. Upsert inventory_stocks for each item
-    for (const detail of prDetails) {
-      const existing = await tx
-        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
-        .from(inventoryStocks)
-        .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
+    // BOLT: Fix N+1 query by batching stock selects and inserts, pre-aggregating quantities
+    const itemIds = [...new Set(prDetails.map((d) => d.itemId))];
+    const existingStocks = itemIds.length > 0
+      ? await tx
+          .select({ id: inventoryStocks.id, itemId: inventoryStocks.itemId, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
+          .from(inventoryStocks)
+          .where(and(eq(inventoryStocks.warehouseId, warehouseId), inArray(inventoryStocks.itemId, itemIds)))
+      : [];
+    const stockMap = new Map(existingStocks.map((s) => [s.itemId, s]));
 
-      if (existing.length === 0) {
-        // Insert new stock record
-        await tx.insert(inventoryStocks).values({
+    const inserts = [];
+
+    // Pre-aggregate quantities to handle duplicate itemIds in prDetails
+    const aggregatedDetails = new Map<string, number>();
+    for (const detail of prDetails) {
+      const currentQty = aggregatedDetails.get(detail.itemId) || 0;
+      aggregatedDetails.set(detail.itemId, currentQty + Number(detail.quantity));
+    }
+
+    for (const [itemId, totalQty] of aggregatedDetails.entries()) {
+      const existingStock = stockMap.get(itemId);
+
+      if (!existingStock) {
+        // Prepare insert payload
+        inserts.push({
           warehouseId,
-          itemId: detail.itemId,
-          physicalQty: detail.quantity.toString(),
-          availableQty: detail.quantity.toString(),
+          itemId,
+          physicalQty: totalQty.toString(),
+          availableQty: totalQty.toString(),
           reservedQty: "0.00",
           createdBy: userId,
           updatedBy: userId,
         });
       } else {
         // Update existing stock quantity
-        const existingStock = existing[0]!;
-        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
-        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
+        const newPhysicalQty = Number(existingStock.physicalQty) + totalQty;
+        const newAvailableQty = Number(existingStock.availableQty) + totalQty;
         await tx
           .update(inventoryStocks)
           .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
           .where(eq(inventoryStocks.id, existingStock.id));
       }
+    }
+
+    if (inserts.length > 0) {
+      await tx.insert(inventoryStocks).values(inserts);
     }
   }
 
