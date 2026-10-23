@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,18 +164,33 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
+      const poDetailIds = [...new Set(payload.details.map(d => String(d.purchaseOrderDetailId)))];
+
+      const poDetails = poDetailIds.length ? await tx.query.purchaseOrderDetails.findMany({
+        where: and(
+          inArray(purchaseOrderDetails.id, poDetailIds),
+          isNull(purchaseOrderDetails.deletedAt)
+        )
+      }) : [];
+
+      const poDetailMap = new Map(poDetails.map(pd => [pd.id, pd]));
+      const poDetailUpdates = new Map<string, number>();
+      const detailsToInsert = [];
+
       for (const detail of payload.details) {
         // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
-        });
+        const poDetail = poDetailMap.get(detail.purchaseOrderDetailId);
         
         if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
         
         // Allowed over-receive? We might just cap it or allow it depending on business logic.
         // For now, let's just log or accept the received quantity.
 
-        await tx.insert(goodsReceiptDetails).values({
+        // Accumulate received quantity
+        const currentAccumulated = poDetailUpdates.get(detail.purchaseOrderDetailId) || 0;
+        poDetailUpdates.set(detail.purchaseOrderDetailId, currentAccumulated + detail.receivedQuantity);
+
+        detailsToInsert.push({
           goodsReceiptId: gr.id,
           purchaseOrderDetailId: detail.purchaseOrderDetailId,
           itemId: detail.itemId,
@@ -184,16 +199,31 @@ export class GoodsReceiptModel {
           createdBy: userId,
           updatedBy: userId,
         });
+      }
 
-        // Update PO Detail's receivedQuantity
-        const newReceivedQty = poDetail.receivedQuantity + detail.receivedQuantity;
+      if (detailsToInsert.length > 0) {
+        await tx.insert(goodsReceiptDetails).values(detailsToInsert);
+      }
+
+      if (poDetailUpdates.size > 0) {
+        const sqlChunks: any[] = [];
+        sqlChunks.push(sql`(CASE`);
+        for (const [id, additionalQty] of poDetailUpdates.entries()) {
+          const poDetail = poDetailMap.get(id);
+          const newQty = (poDetail?.receivedQuantity || 0) + additionalQty;
+          sqlChunks.push(sql`WHEN id = ${id} THEN ${newQty}`);
+        }
+        sqlChunks.push(sql`END)`);
+
+        const finalSql = sql.join(sqlChunks, sql` `);
+
         await tx.update(purchaseOrderDetails)
           .set({
-            receivedQuantity: newReceivedQty,
+            receivedQuantity: finalSql as any,
             updatedAt: new Date(),
             updatedBy: userId,
           })
-          .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+          .where(inArray(purchaseOrderDetails.id, Array.from(poDetailUpdates.keys())));
       }
 
       // 4. Update PO Status
