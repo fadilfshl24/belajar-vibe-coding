@@ -89,16 +89,19 @@ export class ScrapController {
         requiredApprovalStage = await resolveRequiredApprovalStage(userId, "SCRAP");
       }
 
-      const rows = await ScrapModel.findAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-        requiredApprovalStage,
-      });
-      const totalCount = await ScrapModel.countAll({
-        ...params,
-        warehouseIds: visibleWarehouseIds,
-        requiredApprovalStage,
-      });
+      // ⚡ Bolt: Execute findAll and countAll concurrently to reduce overall latency
+      const [rows, totalCount] = await Promise.all([
+        ScrapModel.findAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+          requiredApprovalStage,
+        }),
+        ScrapModel.countAll({
+          ...params,
+          warehouseIds: visibleWarehouseIds,
+          requiredApprovalStage,
+        })
+      ]);
 
       const totalPage = Math.ceil(totalCount / params.limit) || 1;
 
