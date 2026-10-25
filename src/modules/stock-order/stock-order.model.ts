@@ -262,11 +262,13 @@ export class StockOrderModel {
       )
       .where(and(eq(stockOrderItems.stockOrderId, order.id), isNull(stockOrderItems.deletedAt)));
 
-    const platformItems = await Promise.all(
-      rawPlatformItems.map(async (pi) => {
-        const packageDetails = await db
+    // ⚡ Bolt: Replace N+1 queries with a single batched query using inArray
+    const packageItemIds = [...new Set(rawPlatformItems.map((pi) => pi.itemId))];
+    const allPackageDetails = packageItemIds.length > 0
+      ? await db
           .select({
             id: itemPackageDetails.id,
+            packageItemId: itemPackageDetails.packageItemId,
             childItemId: itemPackageDetails.childItemId,
             childItemCode: items.code,
             childItemName: items.name,
@@ -281,17 +283,27 @@ export class StockOrderModel {
           .leftJoin(itemCategories, eq(items.categoryId, itemCategories.id))
           .where(
             and(
-              eq(itemPackageDetails.packageItemId, pi.itemId),
+              inArray(itemPackageDetails.packageItemId, packageItemIds),
               isNull(itemPackageDetails.deletedAt)
             )
-          );
+          )
+      : [];
 
-        return {
-          ...pi,
-          packageDetails,
-        };
-      })
-    );
+    const packageDetailsMap = new Map<string, any[]>();
+    for (const detail of allPackageDetails) {
+      if (!packageDetailsMap.has(detail.packageItemId)) {
+        packageDetailsMap.set(detail.packageItemId, []);
+      }
+      const { packageItemId, ...rest } = detail;
+      packageDetailsMap.get(detail.packageItemId)!.push(rest);
+    }
+
+    const platformItems = rawPlatformItems.map((pi) => {
+      return {
+        ...pi,
+        packageDetails: packageDetailsMap.get(pi.itemId) || [],
+      };
+    });
 
     return {
       order: {
