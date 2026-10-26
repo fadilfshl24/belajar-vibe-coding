@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## $(date +%Y-%m-%d) - Batched database queries vs original method signatures
+**Learning:** When refactoring for performance by replacing an N+1 query method with a batched alternative (e.g. using `inArray`), you must ensure the new method accurately maps data without regressions, while the original single-item method is preserved for backward compatibility and to prevent widespread breakage across modules.
+**Action:** Always add a new batched method (e.g. `getLockedStockItemIds`) next to the original method (`isStockLocked`) and update only the loops needing optimization to use the batched version.
