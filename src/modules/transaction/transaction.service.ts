@@ -32,16 +32,47 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+  /**
+   * Returns a set of item IDs that are locked by an Approved Purchase Request at the given warehouse.
+   * Batches the N+1 check in completeTransaction.
+   */
+  static async getLockedStockItemIds(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds.length) return new Set();
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, itemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      )
+      .groupBy(purchaseRequestDetails.itemId);
+
+    return new Set(lockedPRs.map((pr) => pr.itemId));
+  }
+
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
+    // Batched locking check to avoid N+1 queries
     if (txData.type === "OUT" && !isSuperadmin) {
+      const itemIds = [...new Set(txData.items.map((item) => item.itemId))];
+      const lockedItemIds = await TransactionService.getLockedStockItemIds(txData.warehouseId, itemIds);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedItemIds.has(item.itemId)) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
