@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2026-10-28 - [Performance] Refactoring N+1 Query in Transaction Service
+**Learning:** Checking stock locks inside a loop causes significant N+1 queries. When batching such checks, passing an empty array to Drizzle ORM's `inArray` will throw an error. Furthermore, wrapping the new batched method in the original method's signature prevents backward compatibility issues.
+**Action:** Always check `!itemIds.length` when using `inArray`. Replace internal loops with batched queries (`getLockedStocks`), then wrap them for API compatibility (`isStockLocked`). Ensure to use a `Set` to optimize the `IN` clause payload size.
