@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2026-10-29 - [Fix N+1 in scanForOutbound packageDetails query]
+**Learning:** Extracting database queries from nested loops (e.g., `Promise.all(arr.map(...))`) using batched `inArray` clauses dramatically reduces DB roundtrips. When doing this, ensure to clean up structural metadata (e.g., the parent mapping ID) before returning to maintain exact output shapes.
+**Action:** When replacing N+1 sequential database reads/writes with batched queries, ensure that branching logic and original output shapes are accurately preserved against the batched in-memory Map to avoid downstream type or logic breakages.
