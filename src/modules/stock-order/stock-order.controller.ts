@@ -158,11 +158,16 @@ export class StockOrderController {
         });
       }
 
+      // ⚡ BOLT OPTIMIZATION: Resolving N+1 query
+      // By batch fetching existing tracking IDs before entering the transaction loop,
+      // we reduce database calls from O(N) to O(1). We use a Set for O(1) existence checks.
+      const trackingIds = Array.from(stockOrdersMap.keys());
+      const existingTrackingIds = await StockOrderModel.findExistingTrackingIds(trackingIds);
+
       let importedCount = 0;
       await db.transaction(async (trx) => {
         for (const [trackingId, data] of stockOrdersMap.entries()) {
-          const existing = await StockOrderModel.findByTrackingId(trackingId);
-          if (existing) continue;
+          if (existingTrackingIds.has(trackingId)) continue;
           await StockOrderModel.create(data.order, data.items, trx);
           importedCount++;
         }

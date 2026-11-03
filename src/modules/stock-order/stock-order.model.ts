@@ -118,6 +118,18 @@ export class StockOrderModel {
 
   // ── FIND BY TRACKING ID ────────────────────────────────────────────────────
 
+  static async findExistingTrackingIds(trackingIds: string[], type?: "INBOUND" | "OUTBOUND"): Promise<Set<string>> {
+    if (!trackingIds.length) return new Set();
+    const conditions = [inArray(stockOrders.trackingId, trackingIds), isNull(stockOrders.deletedAt)];
+    if (type) conditions.push(eq(stockOrders.type, type));
+
+    const existing = await db
+      .select({ trackingId: stockOrders.trackingId })
+      .from(stockOrders)
+      .where(and(...conditions));
+    return new Set(existing.map((e) => e.trackingId));
+  }
+
   static async findByTrackingId(trackingId: string, type?: "INBOUND" | "OUTBOUND") {
     const conditions = [eq(stockOrders.trackingId, trackingId), isNull(stockOrders.deletedAt)];
     if (type) conditions.push(eq(stockOrders.type, type));
