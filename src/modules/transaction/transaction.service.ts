@@ -1,7 +1,7 @@
 import { db } from "../../core/db";
 import { TransactionModel } from "./transaction.model";
 import { inventoryStocks } from "../inventory/inventory.schema";
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import type { TransactionInsert, TransactionItemInsert } from "./transaction.schema";
 import { purchaseRequests, purchaseRequestDetails } from "../purchase-request/purchase-request.schema";
 
@@ -32,57 +32,81 @@ export class TransactionService {
     return lockedPR.length > 0;
   }
 
+static async getLockedStocks(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds.length) return new Set();
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
+      .from(purchaseRequests)
+      .innerJoin(
+        purchaseRequestDetails,
+        eq(purchaseRequestDetails.purchaseRequestId, purchaseRequests.id)
+      )
+      .where(
+        and(
+          eq(purchaseRequests.warehouseId, warehouseId),
+          eq(purchaseRequests.status, 2), // Approved
+          inArray(purchaseRequestDetails.itemId, itemIds),
+          isNull(purchaseRequests.deletedAt),
+          isNull(purchaseRequestDetails.deletedAt)
+        )
+      );
+
+    return new Set(lockedPRs.map(pr => String(pr.itemId)));
+  }
+
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
     const txData = await TransactionModel.findById(transactionId);
     if (!txData) throw new Error("Transaction not found");
     if (txData.status !== "DRAFT") throw new Error("Only DRAFT transactions can be completed");
 
+    const aggregatedItems = new Map<string, number>();
+    for (const item of txData.items) {
+      aggregatedItems.set(item.itemId, (aggregatedItems.get(item.itemId) || 0) + Number(item.quantity));
+    }
+    const uniqueItemIds = Array.from(aggregatedItems.keys());
+
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
-      for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
-          throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
+      const lockedStocks = await TransactionService.getLockedStocks(txData.warehouseId, uniqueItemIds);
+      for (const itemId of uniqueItemIds) {
+        if (lockedStocks.has(itemId)) {
+          throw new Error(`Stok untuk item ${itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
     }
 
     await db.transaction(async (tx) => {
-      const itemIds = txData.items.map((item) => item.itemId);
-      const stocks = itemIds.length > 0
+      const stocks = uniqueItemIds.length > 0
         ? await tx
             .select()
             .from(inventoryStocks)
             .where(
               and(
                 eq(inventoryStocks.warehouseId, txData.warehouseId),
-                inArray(inventoryStocks.itemId, itemIds)
+                inArray(inventoryStocks.itemId, uniqueItemIds)
               )
             )
         : [];
       const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
       const insertPayloads = [];
+      const existingStockIds: string[] = [];
+      const physicalQtyCases: any[] = [];
+      const availableQtyCases: any[] = [];
 
-      for (const item of txData.items) {
-        const stock = stockMap.get(item.itemId);
-        const qty = Number(item.quantity);
+      for (const [itemId, qty] of aggregatedItems.entries()) {
+        const stock = stockMap.get(itemId);
 
         if (txData.type === "IN") {
           if (stock) {
-            await tx
-              .update(inventoryStocks)
-              .set({
-                physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                availableQty: (Number(stock.availableQty) + qty).toString(),
-                updatedAt: new Date(),
-                updatedBy: userId
-              })
-              .where(eq(inventoryStocks.id, stock.id));
+            existingStockIds.push(stock.id);
+            physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.physicalQty}::numeric + ${qty})::text`);
+            availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.availableQty}::numeric + ${qty})::text`);
           } else {
             insertPayloads.push({
               warehouseId: txData.warehouseId,
-              itemId: item.itemId,
+              itemId: itemId,
               physicalQty: qty.toString(),
               availableQty: qty.toString(),
               reservedQty: "0.00",
@@ -92,18 +116,24 @@ export class TransactionService {
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.physicalQty) < qty) {
-            throw new Error(`Insufficient stock for item ${item.itemId}`);
+            throw new Error(`Insufficient stock for item ${itemId}`);
           }
-          await tx
-            .update(inventoryStocks)
-            .set({
-              physicalQty: (Number(stock.physicalQty) - qty).toString(),
-              availableQty: (Number(stock.availableQty) - qty).toString(),
-              updatedAt: new Date(),
-              updatedBy: userId
-            })
-            .where(eq(inventoryStocks.id, stock.id));
+          existingStockIds.push(stock.id);
+          physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.physicalQty}::numeric - ${qty})::text`);
+          availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.availableQty}::numeric - ${qty})::text`);
         }
+      }
+
+      if (existingStockIds.length > 0) {
+        await tx
+          .update(inventoryStocks)
+          .set({
+            physicalQty: sql.join([sql`CASE`, ...physicalQtyCases, sql`END`], sql` `),
+            availableQty: sql.join([sql`CASE`, ...availableQtyCases, sql`END`], sql` `),
+            updatedAt: new Date(),
+            updatedBy: userId
+          })
+          .where(inArray(inventoryStocks.id, existingStockIds));
       }
 
       if (insertPayloads.length > 0) {
@@ -123,50 +153,57 @@ export class TransactionService {
       const txData = await TransactionModel.findById(approval.transactionId);
       if (!txData) return;
 
+      const aggregatedItems = new Map<string, number>();
+      for (const item of txData.items) {
+        aggregatedItems.set(item.itemId, (aggregatedItems.get(item.itemId) || 0) + Number(item.quantity));
+      }
+      const uniqueItemIds = Array.from(aggregatedItems.keys());
+
       await db.transaction(async (tx) => {
-        const itemIds = txData.items.map((item) => item.itemId);
-        const stocks = itemIds.length > 0
+        const stocks = uniqueItemIds.length > 0
           ? await tx
               .select()
               .from(inventoryStocks)
               .where(
                 and(
                   eq(inventoryStocks.warehouseId, txData.warehouseId),
-                  inArray(inventoryStocks.itemId, itemIds)
+                  inArray(inventoryStocks.itemId, uniqueItemIds)
                 )
               )
           : [];
         const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
-        for (const item of txData.items) {
-          const stock = stockMap.get(item.itemId);
+        const existingStockIds: string[] = [];
+        const physicalQtyCases: any[] = [];
+        const availableQtyCases: any[] = [];
+
+        for (const [itemId, qty] of aggregatedItems.entries()) {
+          const stock = stockMap.get(itemId);
 
           if (stock) {
-            const qty = Number(item.quantity);
+            existingStockIds.push(stock.id);
             if (txData.type === "IN") {
               // Revert IN -> subtract
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) - qty).toString(),
-                  availableQty: (Number(stock.availableQty) - qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.physicalQty}::numeric - ${qty})::text`);
+              availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.availableQty}::numeric - ${qty})::text`);
             } else {
               // Revert OUT -> add
-              await tx
-                .update(inventoryStocks)
-                .set({
-                  physicalQty: (Number(stock.physicalQty) + qty).toString(),
-                  availableQty: (Number(stock.availableQty) + qty).toString(),
-                  updatedAt: new Date(),
-                  updatedBy: approvedBy
-                })
-                .where(eq(inventoryStocks.id, stock.id));
+              physicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.physicalQty}::numeric + ${qty})::text`);
+              availableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN (${inventoryStocks.availableQty}::numeric + ${qty})::text`);
             }
           }
+        }
+
+        if (existingStockIds.length > 0) {
+          await tx
+            .update(inventoryStocks)
+            .set({
+              physicalQty: sql.join([sql`CASE`, ...physicalQtyCases, sql`END`], sql` `),
+              availableQty: sql.join([sql`CASE`, ...availableQtyCases, sql`END`], sql` `),
+              updatedAt: new Date(),
+              updatedBy: approvedBy
+            })
+            .where(inArray(inventoryStocks.id, existingStockIds));
         }
       });
     }
