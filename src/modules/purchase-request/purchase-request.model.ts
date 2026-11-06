@@ -378,32 +378,49 @@ export class PurchaseRequestModel {
     );
 
     // 4. Upsert inventory_stocks for each item
+    // ⚡ Bolt: Optimize N+1 query by batching inventory stock fetches
+    const aggregatedDetails = new Map<string, number>();
     for (const detail of prDetails) {
-      const existing = await tx
-        .select({ id: inventoryStocks.id, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
-        .from(inventoryStocks)
-        .where(and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId)));
+      aggregatedDetails.set(detail.itemId, (aggregatedDetails.get(detail.itemId) || 0) + Number(detail.quantity));
+    }
 
-      if (existing.length === 0) {
-        // Insert new stock record
-        await tx.insert(inventoryStocks).values({
-          warehouseId,
-          itemId: detail.itemId,
-          physicalQty: detail.quantity.toString(),
-          availableQty: detail.quantity.toString(),
-          reservedQty: "0.00",
-          createdBy: userId,
-          updatedBy: userId,
-        });
-      } else {
-        // Update existing stock quantity
-        const existingStock = existing[0]!;
-        const newPhysicalQty = Number(existingStock.physicalQty) + Number(detail.quantity);
-        const newAvailableQty = Number(existingStock.availableQty) + Number(detail.quantity);
-        await tx
-          .update(inventoryStocks)
-          .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
-          .where(eq(inventoryStocks.id, existingStock.id));
+    const uniqueItemIds = Array.from(aggregatedDetails.keys());
+    if (uniqueItemIds.length > 0) {
+      const existingStocks = await tx
+        .select({ id: inventoryStocks.id, itemId: inventoryStocks.itemId, physicalQty: inventoryStocks.physicalQty, availableQty: inventoryStocks.availableQty })
+        .from(inventoryStocks)
+        .where(
+          and(
+            eq(inventoryStocks.warehouseId, warehouseId),
+            inArray(inventoryStocks.itemId, uniqueItemIds)
+          )
+        );
+
+      const stockMap = new Map(existingStocks.map(s => [s.itemId, s]));
+
+      for (const [itemId, quantity] of aggregatedDetails.entries()) {
+        const existingStock = stockMap.get(itemId);
+
+        if (!existingStock) {
+          // Insert new stock record
+          await tx.insert(inventoryStocks).values({
+            warehouseId,
+            itemId,
+            physicalQty: quantity.toString(),
+            availableQty: quantity.toString(),
+            reservedQty: "0.00",
+            createdBy: userId,
+            updatedBy: userId,
+          });
+        } else {
+          // Update existing stock quantity
+          const newPhysicalQty = Number(existingStock.physicalQty) + quantity;
+          const newAvailableQty = Number(existingStock.availableQty) + quantity;
+          await tx
+            .update(inventoryStocks)
+            .set({ physicalQty: newPhysicalQty.toString(), availableQty: newAvailableQty.toString(), updatedAt: new Date(), updatedBy: userId })
+            .where(eq(inventoryStocks.id, existingStock.id));
+        }
       }
     }
   }
