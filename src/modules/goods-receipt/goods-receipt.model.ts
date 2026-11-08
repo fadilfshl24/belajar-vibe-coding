@@ -1,4 +1,4 @@
-import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, count, sql, isNull, gte, lte, inArray } from "drizzle-orm";
 import { db } from "../../core/db";
 import { goodsReceipts, goodsReceiptDetails } from "./goods-receipt.schema";
 import { purchaseOrders, purchaseOrderDetails } from "../purchase-order/purchase-order.schema";
@@ -164,18 +164,27 @@ export class GoodsReceiptModel {
       if (!gr) throw new Error("Failed to create GR header");
 
       // 3. Insert Details and Update PO Details
+      // Pre-fetch all PO details to avoid N+1 queries
+      const poDetailIds = [...new Set(payload.details.map((d: any) => d.purchaseOrderDetailId))];
+      const poDetails = poDetailIds.length > 0 ? await tx.query.purchaseOrderDetails.findMany({
+        where: and(inArray(purchaseOrderDetails.id, poDetailIds), isNull(purchaseOrderDetails.deletedAt))
+      }) : [];
+
+      const poDetailMap = new Map();
+      for (const pd of poDetails) {
+        poDetailMap.set(pd.id, pd);
+      }
+
+      // Collect data for batch inserts and calculate new quantities
+      const grDetailsToInsert = [];
+      const updatedPoDetails = new Map();
+
       for (const detail of payload.details) {
-        // Find PO Detail to validate remaining quantity
-        const poDetail = await tx.query.purchaseOrderDetails.findFirst({
-          where: and(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId), isNull(purchaseOrderDetails.deletedAt))
-        });
+        const poDetail = poDetailMap.get(detail.purchaseOrderDetailId);
         
         if (!poDetail) throw new Error(`PO Detail not found for item ${detail.itemId}`);
-        
-        // Allowed over-receive? We might just cap it or allow it depending on business logic.
-        // For now, let's just log or accept the received quantity.
 
-        await tx.insert(goodsReceiptDetails).values({
+        grDetailsToInsert.push({
           goodsReceiptId: gr.id,
           purchaseOrderDetailId: detail.purchaseOrderDetailId,
           itemId: detail.itemId,
@@ -185,15 +194,36 @@ export class GoodsReceiptModel {
           updatedBy: userId,
         });
 
-        // Update PO Detail's receivedQuantity
-        const newReceivedQty = poDetail.receivedQuantity + detail.receivedQuantity;
+        // Update PO Detail's receivedQuantity in memory first to handle multiple details for same PO detail
+        const currentQty = updatedPoDetails.has(detail.purchaseOrderDetailId)
+          ? updatedPoDetails.get(detail.purchaseOrderDetailId)
+          : poDetail.receivedQuantity;
+
+        updatedPoDetails.set(detail.purchaseOrderDetailId, currentQty + detail.receivedQuantity);
+      }
+
+      // Batch insert Goods Receipt Details
+      if (grDetailsToInsert.length > 0) {
+        await tx.insert(goodsReceiptDetails).values(grDetailsToInsert);
+      }
+
+      // Batch update PO Details using CASE statement
+      if (updatedPoDetails.size > 0) {
+        const sqlChunks: any[] = [];
+        sqlChunks.push(sql`(CASE`);
+        for (const [id, qty] of updatedPoDetails.entries()) {
+          sqlChunks.push(sql`WHEN ${purchaseOrderDetails.id} = ${id} THEN ${qty}`);
+        }
+        sqlChunks.push(sql`END)`);
+        const finalSql = sql.join(sqlChunks, sql` `);
+
         await tx.update(purchaseOrderDetails)
           .set({
-            receivedQuantity: newReceivedQty,
+            receivedQuantity: finalSql,
             updatedAt: new Date(),
             updatedBy: userId,
           })
-          .where(eq(purchaseOrderDetails.id, detail.purchaseOrderDetailId));
+          .where(inArray(purchaseOrderDetails.id, Array.from(updatedPoDetails.keys())));
       }
 
       // 4. Update PO Status
