@@ -5,3 +5,7 @@
 ## 2026-07-15 - [Fixing N+1 Queries on Inventory Transaction Operations]
 **Learning:** Found N+1 sequential database reads/writes occurring in a loop during transaction finalization (complete/cancel) in `src/modules/transaction/transaction.service.ts`.
 **Action:** Replace `for` loop database `SELECT`s with an array mapping of `itemId`s, fetching a single `inArray` query into a Map for O(1) checks. For modifications, push new entry objects into an array to bulk `insert`, and push update promises into an array to run `Promise.all(updatePromises)`, eliminating N+1 sequential blocking ops.
+
+## 2024-05-18 - [Fix Code Review False Positives]
+**Learning:** Automated code review flagged a missing import for `inArray`, but reading the file confirmed `inArray` was already imported.
+**Action:** When a code review points out a missing import or syntax error, double-check the actual source file using `cat` or `grep` to avoid trying to fix non-existent issues. Proceed if it's a false positive.
