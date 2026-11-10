@@ -1,4 +1,4 @@
-import { eq, and, desc, isNull, inArray, ne, or, gte, lte } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, ne, or, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../core/db";
 import { qualityControls, qualityControlDetails } from "./quality-control.schema";
 import { documentApprovals } from "../approval/document-approval.schema";
@@ -351,31 +351,73 @@ export class QualityControlModel {
           }));
           await tx.insert(transactionItems).values(trxInItems);
 
-          // Update real inventory stock
-          for (const detail of passDetails) {
-            const stock = await tx.query.inventoryStocks.findFirst({
-              where: and(eq(inventoryStocks.warehouseId, warehouseId), eq(inventoryStocks.itemId, detail.itemId))
+          // Pre-aggregate pass details by itemId in case of duplicates
+          const aggregatedPassDetails = new Map<string, number>();
+          for (const d of passDetails) {
+            aggregatedPassDetails.set(
+              d.itemId,
+              (aggregatedPassDetails.get(d.itemId) || 0) + d.passQuantity
+            );
+          }
+
+          const uniqueItemIds = Array.from(aggregatedPassDetails.keys());
+
+          if (uniqueItemIds.length > 0) {
+            // Batch fetch existing stocks
+            const existingStocks = await tx.query.inventoryStocks.findMany({
+              where: and(
+                eq(inventoryStocks.warehouseId, warehouseId),
+                inArray(inventoryStocks.itemId, uniqueItemIds)
+              )
             });
 
-            if (stock) {
+            const existingStockMap = new Map(existingStocks.map(s => [s.itemId, s]));
+
+            const insertValues = [];
+            const updateIds: string[] = [];
+            const sqlPhysicalQtyCases: any[] = [];
+            const sqlAvailableQtyCases: any[] = [];
+
+            for (const [itemId, passQty] of aggregatedPassDetails.entries()) {
+              const stock = existingStockMap.get(itemId);
+              if (stock) {
+                const newPhysical = (parseFloat(stock.physicalQty) + passQty).toString();
+                const newAvailable = (parseFloat(stock.availableQty) + passQty).toString();
+
+                updateIds.push(stock.id);
+                sqlPhysicalQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${newPhysical}::numeric`);
+                sqlAvailableQtyCases.push(sql`WHEN ${inventoryStocks.id} = ${stock.id} THEN ${newAvailable}::numeric`);
+              } else {
+                insertValues.push({
+                  warehouseId,
+                  itemId,
+                  physicalQty: passQty.toString(),
+                  availableQty: passQty.toString(),
+                  reservedQty: "0.00",
+                  createdBy: userId,
+                  updatedBy: userId,
+                });
+              }
+            }
+
+            // Bulk Insert
+            if (insertValues.length > 0) {
+              await tx.insert(inventoryStocks).values(insertValues);
+            }
+
+            // Bulk Update
+            if (updateIds.length > 0) {
+              const casePhysicalQty = sql.join([sql`CASE`, ...sqlPhysicalQtyCases, sql`ELSE ${inventoryStocks.physicalQty} END`], sql` `);
+              const caseAvailableQty = sql.join([sql`CASE`, ...sqlAvailableQtyCases, sql`ELSE ${inventoryStocks.availableQty} END`], sql` `);
+
               await tx.update(inventoryStocks)
                 .set({
-                  physicalQty: (parseFloat(stock.physicalQty) + detail.passQuantity).toString(),
-                  availableQty: (parseFloat(stock.availableQty) + detail.passQuantity).toString(),
+                  physicalQty: casePhysicalQty,
+                  availableQty: caseAvailableQty,
                   updatedAt: new Date(),
                   updatedBy: userId
                 })
-                .where(eq(inventoryStocks.id, stock.id));
-            } else {
-              await tx.insert(inventoryStocks).values({
-                warehouseId,
-                itemId: detail.itemId,
-                physicalQty: detail.passQuantity.toString(),
-                availableQty: detail.passQuantity.toString(),
-                reservedQty: "0.00",
-                createdBy: userId,
-                updatedBy: userId,
-              });
+                .where(inArray(inventoryStocks.id, updateIds));
             }
           }
         }
