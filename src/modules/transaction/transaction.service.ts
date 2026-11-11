@@ -10,9 +10,15 @@ export class TransactionService {
    * Returns true if the given item at the given warehouse is locked by an Approved Purchase Request.
    * Only Superadmin can override a locked stock.
    */
-  static async isStockLocked(warehouseId: string, itemId: string): Promise<boolean> {
-    const lockedPR = await db
-      .select({ id: purchaseRequests.id })
+  /**
+   * Batched version to check multiple stock locks efficiently in O(1) query.
+   */
+  static async getLockedStockItems(warehouseId: string, itemIds: string[]): Promise<Set<string>> {
+    if (!itemIds.length) return new Set();
+    const uniqueIds = [...new Set(itemIds)];
+
+    const lockedPRs = await db
+      .select({ itemId: purchaseRequestDetails.itemId })
       .from(purchaseRequests)
       .innerJoin(
         purchaseRequestDetails,
@@ -22,14 +28,22 @@ export class TransactionService {
         and(
           eq(purchaseRequests.warehouseId, warehouseId),
           eq(purchaseRequests.status, 2), // Approved
-          eq(purchaseRequestDetails.itemId, itemId),
+          inArray(purchaseRequestDetails.itemId, uniqueIds),
           isNull(purchaseRequests.deletedAt),
           isNull(purchaseRequestDetails.deletedAt)
         )
-      )
-      .limit(1);
+      );
 
-    return lockedPR.length > 0;
+    return new Set(lockedPRs.map((pr) => String(pr.itemId)));
+  }
+
+  /**
+   * Returns true if the given item at the given warehouse is locked by an Approved Purchase Request.
+   * Only Superadmin can override a locked stock.
+   */
+  static async isStockLocked(warehouseId: string, itemId: string): Promise<boolean> {
+    const lockedItems = await TransactionService.getLockedStockItems(warehouseId, [itemId]);
+    return lockedItems.has(itemId);
   }
 
   static async completeTransaction(transactionId: string, userId?: string, isSuperadmin = false) {
@@ -39,9 +53,12 @@ export class TransactionService {
 
     // Stock Locking: non-superadmin cannot modify OUT transactions on locked stocks
     if (txData.type === "OUT" && !isSuperadmin) {
+      // ⚡ Bolt: Fixed N+1 sequential queries by replacing the loop with a single batched query
+      const itemIds = txData.items.map((item) => item.itemId);
+      const lockedItems = await TransactionService.getLockedStockItems(txData.warehouseId, itemIds);
+
       for (const item of txData.items) {
-        const locked = await TransactionService.isStockLocked(txData.warehouseId, item.itemId);
-        if (locked) {
+        if (lockedItems.has(item.itemId)) {
           throw new Error(`Stok untuk item ${item.itemId} sedang dikunci oleh Purchase Request yang telah disetujui. Hanya Superadmin yang dapat mengubah stok ini.`);
         }
       }
@@ -62,11 +79,24 @@ export class TransactionService {
         : [];
       const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
-      const insertPayloads = [];
+      const insertPayloads: any[] = [];
+
+      // ⚡ Bolt: Group updates by item to avoid multiple sequential updates and deadlocks
+      // First, aggregate total quantities in memory
+      const updatesMap = new Map();
 
       for (const item of txData.items) {
-        const stock = stockMap.get(item.itemId);
         const qty = Number(item.quantity);
+
+        if (!updatesMap.has(item.itemId)) {
+          updatesMap.set(item.itemId, { qty: 0 });
+        }
+        updatesMap.get(item.itemId).qty += qty;
+      }
+
+      for (const [itemId, data] of updatesMap.entries()) {
+        const stock = stockMap.get(itemId);
+        const qty = data.qty;
 
         if (txData.type === "IN") {
           if (stock) {
@@ -82,7 +112,7 @@ export class TransactionService {
           } else {
             insertPayloads.push({
               warehouseId: txData.warehouseId,
-              itemId: item.itemId,
+              itemId: itemId,
               physicalQty: qty.toString(),
               availableQty: qty.toString(),
               reservedQty: "0.00",
@@ -92,7 +122,7 @@ export class TransactionService {
           }
         } else if (txData.type === "OUT") {
           if (!stock || Number(stock.physicalQty) < qty) {
-            throw new Error(`Insufficient stock for item ${item.itemId}`);
+            throw new Error(`Insufficient stock for item ${itemId}`);
           }
           await tx
             .update(inventoryStocks)
@@ -138,11 +168,21 @@ export class TransactionService {
           : [];
         const stockMap = new Map(stocks.map((s) => [s.itemId, s]));
 
+        // ⚡ Bolt: Group updates by item to avoid multiple sequential updates on same row
+        const revertsMap = new Map();
         for (const item of txData.items) {
-          const stock = stockMap.get(item.itemId);
+          const qty = Number(item.quantity);
+          if (!revertsMap.has(item.itemId)) {
+            revertsMap.set(item.itemId, { qty: 0 });
+          }
+          revertsMap.get(item.itemId).qty += qty;
+        }
+
+        for (const [itemId, data] of revertsMap.entries()) {
+          const stock = stockMap.get(itemId);
 
           if (stock) {
-            const qty = Number(item.quantity);
+            const qty = data.qty;
             if (txData.type === "IN") {
               // Revert IN -> subtract
               await tx
